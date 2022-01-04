@@ -1,2 +1,2 @@
 # table-allocations
-Genetic algorithm for allocating tables based on preferences
+Algorithm for allocating tables based on preferences, using simulated annealing
