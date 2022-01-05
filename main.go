@@ -246,6 +246,8 @@ func main() {
 
 	for i := range problemContent.Tables {
 		initialTables[i].capacity = problemContent.Tables[i]
+		initialTables[i].people = make([]person, initialTables[i].capacity)
+		initialTables[i].peopleMap = make(map[string]bool)
 	}
 
 	solution := anneal(problemContent.People, initialTables, baseTemperature, endTemperature, coolingRate, internalIterations, swapCount, annealerCount)
