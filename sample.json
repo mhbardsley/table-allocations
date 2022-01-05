@@ -245,5 +245,19 @@
 			"preferences": ["Person 31", "Person 40", "Person 21"]
 		}
 	],
-	"tables": [3, 7, 6, 5, 4, 10, 9, 4, 7, 6]
+	"tables": [3, 7, 6, 5, 4, 10, 9, 4, 7, 6],
+	"plusOnes": [
+		{
+			"personOne": "Person 48",
+			"personTwo": "Person 60"
+		},
+		{
+			"personOne": "Person 13",
+			"personTwo": "Person 14"
+		},
+		{
+			"personOne": "Person 17",
+			"personTwo": "Person 0"
+		}
+	]
 }
