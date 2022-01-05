@@ -232,11 +232,11 @@ func main() {
 
 	costFunctionPtr := flag.String("m", "sum", "Whether the program should maximise the total number of satisifed preferences or the number of people with at least 1 satisfied preference")
 	filePtr := flag.String("f", "input.json", "The filename to be checked")
-	baseTemperaturePtr := flag.String("b", "1.0", "The lowest base temperature for the concurrent annealers (temperature increases by 2^i for each goroutine i)")
-	endTemperaturePtr := flag.String("e", "0.00001", "The lowest final temperature for the concurrent annealers (temperature increases by 2^i for each goroutine i)")
-	coolingRatePtr := flag.String("c", "0.9", "The rate of cooling for each step in the annealing process (a number greater than 0 and less than 1)")
-	iterationPtr := flag.String("i", "1000", "The number of iterations at each step of the annealing process")
-	swapPtr := flag.String("s", "1", "The number of swaps in each iteration of the anneling process")
+	baseTemperaturePtr := flag.String("b", "1.0", "The lowest base temperature for the concurrent annealers (temperature increases by 2^i for each goroutine i) - lower is quicker; higher is more optimal")
+	endTemperaturePtr := flag.String("e", "0.00001", "The lowest final temperature for the concurrent annealers (temperature increases by 2^i for each goroutine i) - lower is more optimal; higher is quicker")
+	coolingRatePtr := flag.String("c", "0.9", "The rate of cooling for each step in the annealing process (a number greater than 0 and less than 1) - closer to 0 is quicker; closer to 1 is more optimal")
+	iterationPtr := flag.String("i", "1000", "The number of iterations at each step of the annealing process - lower is quicker; higher is more optimal")
+	swapPtr := flag.String("s", "1", "The number of swaps in each iteration of the anneling process - lower is quicker; higher is more optimal")
 	concurrentAnnealerPtr := flag.String("a", "6", "The number of concurrent annealing goroutines")
 
 	flag.Parse()

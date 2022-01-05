@@ -10,6 +10,7 @@ Algorithm for allocating tables based on preferences, using simulated annealing
 
 ## Running the program
 - `table-allocations [flags]`
+- Note: there may be a small delay between running the program and getting the result (see below for inspecting flags to change speed/optimisation trade-off)
 
 All flags are optional and most do not need touching. If you have not named your JSON file `input.json`, you need to supply an `-f` flag, e.g. `table-allocations -f sample.json` will carry out the algorithm on the sample data.
 
