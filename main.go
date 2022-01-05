@@ -204,7 +204,9 @@ func printSolution(solution []table) {
 			fmt.Printf("- %s", person.Name)
 			fmt.Println()
 		}
-		fmt.Println()
+		if tableNo < len(solution)-1 {
+			fmt.Println()
+		}
 	}
 }
 
