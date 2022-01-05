@@ -19,14 +19,14 @@ type person struct {
 }
 
 type table struct {
-	Capacity  int             `json:"capacity"`
-	people    []person        `json:"-"`
-	peopleMap map[string]bool `json:"-"`
+	capacity  int
+	people    []person
+	peopleMap map[string]bool
 }
 
 type problem struct {
 	People []person `json:"people"`
-	Tables []table  `json:"tables"`
+	Tables []int    `json:"tables"`
 }
 
 // the main annealing function
@@ -120,8 +120,8 @@ func getNeighbour(currentAssignment []table, swapCount int) (neighbourAssignment
 		tableTwo := neighbourAssignment[randTwo]
 
 		// generate two further indexes for the people
-		randThree := rand.Intn(tableOne.Capacity)
-		randFour := rand.Intn(tableTwo.Capacity)
+		randThree := rand.Intn(tableOne.capacity)
+		randFour := rand.Intn(tableTwo.capacity)
 
 		personOne := tableOne.people[randThree]
 		personTwo := tableTwo.people[randFour]
@@ -168,11 +168,11 @@ func randomInitialisation(people []person, tables []table) (assignment []table) 
 	// now just fill forwards
 	pos := 0
 	for _, table := range assignment {
-		table.people = people[pos : pos+table.Capacity]
+		table.people = people[pos : pos+table.capacity]
 		for _, person := range table.people {
 			table.peopleMap[person.Name] = true
 		}
-		pos += table.Capacity
+		pos += table.capacity
 	}
 	return assignment
 }
@@ -184,8 +184,8 @@ func copyAssignment(initialAssignment []table) (copiedAssignment []table) {
 	copiedAssignment = make([]table, size)
 
 	for i := 0; i < size; i++ {
-		copiedAssignment[i].Capacity = initialAssignment[i].Capacity
-		copiedAssignment[i].people = make([]person, copiedAssignment[i].Capacity)
+		copiedAssignment[i].capacity = initialAssignment[i].capacity
+		copiedAssignment[i].people = make([]person, copiedAssignment[i].capacity)
 		copiedAssignment[i].peopleMap = make(map[string]bool)
 		copy(copiedAssignment[i].people, initialAssignment[i].people)
 		for k, v := range initialAssignment[i].peopleMap {
@@ -198,7 +198,7 @@ func copyAssignment(initialAssignment []table) (copiedAssignment []table) {
 
 func printSolution(solution []table) {
 	for tableNo, table := range solution {
-		fmt.Printf("Table %d (capacity %d)", tableNo, table.Capacity)
+		fmt.Printf("Table %d (capacity %d)", tableNo, table.capacity)
 		fmt.Println()
 		for _, person := range table.people {
 			fmt.Printf("- %s", person.Name)
@@ -241,7 +241,14 @@ func main() {
 		log.Fatal("error making sense of input file: ", err)
 	}
 
-	solution := anneal(problemContent.People, problemContent.Tables, baseTemperature, endTemperature, coolingRate, internalIterations, swapCount, annealerCount)
+	// convert the slice of table capacities into a slice of table structs
+	initialTables := make([]table, len(problemContent.Tables))
+
+	for i := range problemContent.Tables {
+		initialTables[i].capacity = problemContent.Tables[i]
+	}
+
+	solution := anneal(problemContent.People, initialTables, baseTemperature, endTemperature, coolingRate, internalIterations, swapCount, annealerCount)
 
 	printSolution(solution)
 }
