@@ -36,7 +36,7 @@ type problem struct {
 }
 
 // the main annealing function
-func anneal(people []person, tables []table, plusOnes map[string]string, costFunction func([]table, map[string]string, int) int, penalty int, baseTemperature float64, finalTemperature float64, coolingRate float64, internalIterations int, swapCount int, concurrentAnnealerCount int) (result []table) {
+func anneal(people []person, tables []table, plusOnes map[string]string, costFunction func([]table, map[string]string) int, baseTemperature float64, finalTemperature float64, coolingRate float64, internalIterations int, swapCount int, concurrentAnnealerCount int) (result []table) {
 	initialSolution := randomInitialisation(people, tables)
 
 	// create a channel for concurrent annealers of differing temperatures
@@ -48,14 +48,14 @@ func anneal(people []person, tables []table, plusOnes map[string]string, costFun
 
 	for i := 0; i < concurrentAnnealerCount; i++ {
 		annealerSolutions[i] = copyAssignment(initialSolution)
-		annealerCosts[i] = costFunction(initialSolution, plusOnes, penalty)
+		annealerCosts[i] = costFunction(initialSolution, plusOnes)
 	}
 
 	// while we haven't hit the final temperature
 	for baseTemperature > finalTemperature {
 
 		for i := 0; i < concurrentAnnealerCount; i++ {
-			go annealerInternalIterator(annealerSolutions[i], plusOnes, costFunction, penalty, baseTemperature*math.Pow(2, float64(i)), internalIterations, swapCount, annealerSolution, annealerCost)
+			go annealerInternalIterator(annealerSolutions[i], plusOnes, costFunction, baseTemperature*math.Pow(2, float64(i)), internalIterations, swapCount, annealerSolution, annealerCost)
 			annealerSolutions[i] = <-annealerSolution
 			annealerCosts[i] = <-annealerCost
 		}
@@ -79,15 +79,15 @@ func anneal(people []person, tables []table, plusOnes map[string]string, costFun
 
 // Gets a neighbouring candidate solution and runs the probibalistic steps of the annealing process as many times as
 // specified by the internalIterations count.
-func annealerInternalIterator(candidateSolution []table, plusOnes map[string]string, costFunction func([]table, map[string]string, int) int, penalty int, temperature float64, internalIterations int, swapCount int, as chan []table, ac chan int) {
+func annealerInternalIterator(candidateSolution []table, plusOnes map[string]string, costFunction func([]table, map[string]string) int, temperature float64, internalIterations int, swapCount int, as chan []table, ac chan int) {
 
 	// Set updatedSolution and updatedCost to the current values associated with candidateSolution
 	updatedSolution := copyAssignment(candidateSolution)
-	updatedCost := costFunction(updatedSolution, plusOnes, penalty)
+	updatedCost := costFunction(updatedSolution, plusOnes)
 
 	for i := 0; i < internalIterations; i++ {
 		newCandidateSolution := getNeighbour(updatedSolution, swapCount)
-		newCandidateCost := costFunction(newCandidateSolution, plusOnes, penalty)
+		newCandidateCost := costFunction(newCandidateSolution, plusOnes)
 
 		// if the cost is more then switch to that solution
 		if newCandidateCost > updatedCost {
@@ -146,13 +146,15 @@ func getNeighbour(currentAssignment []table, swapCount int) (neighbourAssignment
 }
 
 // the cost function is the sum of preferences
-func sumFunction(assignment []table, plusOnes map[string]string, penalty int) (cost int) {
+func sumFunction(assignment []table, plusOnes map[string]string) (cost int) {
+	// need to make sure the penalty for not having a plus one is greater than any possible combination of preferences
+	noOfPenalties := 0
 	cost = 0
 	for _, table := range assignment {
 		for _, person := range table.people {
 			plusOne, exists := plusOnes[person.Name]
 			if exists && !table.peopleMap[plusOne] {
-				cost -= penalty
+				noOfPenalties++
 			}
 			for _, preference := range person.Preferences {
 				if table.peopleMap[preference] {
@@ -161,17 +163,22 @@ func sumFunction(assignment []table, plusOnes map[string]string, penalty int) (c
 			}
 		}
 	}
+	if noOfPenalties > 1 {
+		cost = -noOfPenalties
+	}
 	return cost
 }
 
 // the cost function is the count of people with >= 1 preferences
-func countFunction(assignment []table, plusOnes map[string]string, penalty int) (cost int) {
+func countFunction(assignment []table, plusOnes map[string]string) (cost int) {
+	// need to make sure the penalty for not having a plus one is greater than any possible combination of preferences
+	noOfPenalties := 0
 	cost = 0
 	for _, table := range assignment {
 		for _, person := range table.people {
 			plusOne, exists := plusOnes[person.Name]
 			if exists && !table.peopleMap[plusOne] {
-				cost -= penalty
+				noOfPenalties++
 			}
 			for _, preference := range person.Preferences {
 				if table.peopleMap[preference] {
@@ -180,6 +187,9 @@ func countFunction(assignment []table, plusOnes map[string]string, penalty int) 
 				}
 			}
 		}
+	}
+	if noOfPenalties > 1 {
+		cost = -noOfPenalties
 	}
 	return cost
 }
@@ -251,7 +261,6 @@ func main() {
 	baseTemperaturePtr := flag.String("b", "1.0", "The lowest base temperature for the concurrent annealers (temperature increases by 2^i for each goroutine i) - lower is quicker; higher is more optimal")
 	endTemperaturePtr := flag.String("e", "0.00001", "The lowest final temperature for the concurrent annealers (temperature increases by 2^i for each goroutine i) - lower is more optimal; higher is quicker")
 	coolingRatePtr := flag.String("c", "0.9", "The rate of cooling for each step in the annealing process (a number greater than 0 and less than 1) - closer to 0 is quicker; closer to 1 is more optimal")
-	penaltyPtr := flag.String("p", "10", "The penalty for not having a plus-one on a table - lower will favour preferences, higher will favour plus-ones")
 	iterationPtr := flag.String("i", "1000", "The number of iterations at each step of the annealing process - lower is quicker; higher is more optimal")
 	swapPtr := flag.String("s", "1", "The number of swaps in each iteration of the anneling process - lower is quicker; higher is more optimal")
 	concurrentAnnealerPtr := flag.String("a", "6", "The number of concurrent annealing goroutines")
@@ -261,7 +270,6 @@ func main() {
 	baseTemperature, _ := strconv.ParseFloat(*baseTemperaturePtr, 64)
 	endTemperature, _ := strconv.ParseFloat(*endTemperaturePtr, 64)
 	coolingRate, _ := strconv.ParseFloat(*coolingRatePtr, 64)
-	penalty, _ := strconv.Atoi(*penaltyPtr)
 	internalIterations, _ := strconv.Atoi(*iterationPtr)
 	swapCount, _ := strconv.Atoi(*swapPtr)
 	annealerCount, _ := strconv.Atoi(*concurrentAnnealerPtr)
@@ -293,7 +301,7 @@ func main() {
 		plusOnes[p.PersonOne] = p.PersonTwo
 	}
 
-	var costFunction func([]table, map[string]string, int) int
+	var costFunction func([]table, map[string]string) int
 	switch *costFunctionPtr {
 	case "sum":
 		costFunction = sumFunction
@@ -303,7 +311,7 @@ func main() {
 		log.Fatal("provided cost function parameter not understood")
 	}
 
-	solution := anneal(problemContent.People, initialTables, plusOnes, costFunction, penalty, baseTemperature, endTemperature, coolingRate, internalIterations, swapCount, annealerCount)
+	solution := anneal(problemContent.People, initialTables, plusOnes, costFunction, baseTemperature, endTemperature, coolingRate, internalIterations, swapCount, annealerCount)
 
 	printSolution(solution)
 }
