@@ -161,7 +161,7 @@ func sumFunction(assignment []table, plusOnes map[string]string) (cost int) {
 			}
 		}
 	}
-	if noOfPenalties > 1 {
+	if noOfPenalties > 0 {
 		cost = -noOfPenalties
 	}
 	return cost
@@ -186,7 +186,7 @@ func countFunction(assignment []table, plusOnes map[string]string) (cost int) {
 			}
 		}
 	}
-	if noOfPenalties > 1 {
+	if noOfPenalties > 0 {
 		cost = -noOfPenalties
 	}
 	return cost
