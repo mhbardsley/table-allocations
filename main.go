@@ -60,8 +60,6 @@ func anneal(people []person, tables []table, plusOnes map[string]string, costFun
 			annealerCosts[i] = <-annealerCost
 		}
 
-		log.Println(annealerCosts)
-
 		// If a hotter goroutine has a better solution than a colder one then we swap the solutions
 		for i := concurrentAnnealerCount - 1; i > 0; i-- {
 			if annealerCosts[i] > annealerCosts[i-1] {
