@@ -5,7 +5,7 @@ Algorithm for allocating tables based on preferences, using simulated annealing
 - An installation of Go: https://go.dev/dl/
 
 ## Setup
-- `go install github.com/mhbardsley/table-allocations`
+- `go install github.com/mhbardsley/table-allocations@latest`
 - Create a JSON file to hold people, their preferences and table capacities. See `sample.json` as an example. (Note: the program will, by default, look for a `input.json` file)
 
 ## Running the program
