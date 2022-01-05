@@ -36,15 +36,15 @@ type problem struct {
 }
 
 // the main annealing function
-func anneal(people []person, tables []table, plusOnes map[string]string, costFunction func([]table, map[string]string) int, baseTemperature float64, finalTemperature float64, coolingRate float64, internalIterations int, swapCount int, concurrentAnnealerCount int) (result []table) {
+func anneal(people []person, tables []table, plusOnes map[string]string, costFunction func([]table, map[string]string) float64, baseTemperature float64, finalTemperature float64, coolingRate float64, internalIterations int, swapCount int, concurrentAnnealerCount int) (result []table) {
 	initialSolution := randomInitialisation(people, tables)
 
 	// create a channel for concurrent annealers of differing temperatures
 	annealerSolution := make(chan []table)
-	annealerCost := make(chan int)
+	annealerCost := make(chan float64)
 
 	annealerSolutions := make([][]table, concurrentAnnealerCount)
-	annealerCosts := make([]int, concurrentAnnealerCount)
+	annealerCosts := make([]float64, concurrentAnnealerCount)
 
 	for i := 0; i < concurrentAnnealerCount; i++ {
 		annealerSolutions[i] = copyAssignment(initialSolution)
@@ -77,7 +77,7 @@ func anneal(people []person, tables []table, plusOnes map[string]string, costFun
 
 // Gets a neighbouring candidate solution and runs the probibalistic steps of the annealing process as many times as
 // specified by the internalIterations count.
-func annealerInternalIterator(candidateSolution []table, plusOnes map[string]string, costFunction func([]table, map[string]string) int, temperature float64, internalIterations int, swapCount int, as chan []table, ac chan int) {
+func annealerInternalIterator(candidateSolution []table, plusOnes map[string]string, costFunction func([]table, map[string]string) float64, temperature float64, internalIterations int, swapCount int, as chan []table, ac chan float64) {
 
 	// Set updatedSolution and updatedCost to the current values associated with candidateSolution
 	updatedSolution := copyAssignment(candidateSolution)
@@ -144,7 +144,7 @@ func getNeighbour(currentAssignment []table, swapCount int) (neighbourAssignment
 }
 
 // the cost function is the sum of preferences
-func sumFunction(assignment []table, plusOnes map[string]string) (cost int) {
+func sumFunction(assignment []table, plusOnes map[string]string) (cost float64) {
 	// need to make sure the penalty for not having a plus one is greater than any possible combination of preferences
 	noOfPenalties := 0
 	cost = 0
@@ -162,13 +162,13 @@ func sumFunction(assignment []table, plusOnes map[string]string) (cost int) {
 		}
 	}
 	if noOfPenalties > 0 {
-		cost = -noOfPenalties
+		cost = float64(-noOfPenalties)
 	}
 	return cost
 }
 
 // the cost function is the count of people with >= 1 preferences
-func countFunction(assignment []table, plusOnes map[string]string) (cost int) {
+func countFunction(assignment []table, plusOnes map[string]string) (cost float64) {
 	// need to make sure the penalty for not having a plus one is greater than any possible combination of preferences
 	noOfPenalties := 0
 	cost = 0
@@ -187,13 +187,40 @@ func countFunction(assignment []table, plusOnes map[string]string) (cost int) {
 		}
 	}
 	if noOfPenalties > 0 {
-		cost = -noOfPenalties
+		cost = float64(-noOfPenalties)
 	}
 	return cost
 }
 
-func acceptanceProbability(oldCost int, newCost int, temperature float64) (probability float64) {
-	return math.Exp((float64)(newCost-oldCost) / temperature)
+// this cost function presents a hybrid
+func hybridFunction(assignment []table, plusOnes map[string]string) (cost float64) {
+	var additive float64
+	// need to make sure the penalty for not having a plus one is greater than any possible combination of preferences
+	noOfPenalties := 0
+	cost = 0
+	for _, table := range assignment {
+		for _, person := range table.people {
+			additive = 1
+			plusOne, exists := plusOnes[person.Name]
+			if exists && !table.peopleMap[plusOne] {
+				noOfPenalties++
+			}
+			for _, preference := range person.Preferences {
+				if table.peopleMap[preference] {
+					cost += additive
+					additive /= 2
+				}
+			}
+		}
+	}
+	if noOfPenalties > 0 {
+		cost = float64(-noOfPenalties)
+	}
+	return cost
+}
+
+func acceptanceProbability(oldCost float64, newCost float64, temperature float64) (probability float64) {
+	return math.Exp((newCost - oldCost) / temperature)
 }
 
 // randomly assigns people to tables
@@ -254,7 +281,7 @@ func main() {
 	// generate the random seed
 	rand.Seed(time.Now().Unix())
 
-	costFunctionPtr := flag.String("m", "sum", "Whether the program should maximise the total number of satisifed preferences or the number of people with at least 1 satisfied preference")
+	costFunctionPtr := flag.String("m", "hybrid", "Whether the program should: maximise the total number of satisifed preferences; maximise the number of people with at least 1 satisfied preference; provide a hybrid of these")
 	filePtr := flag.String("f", "input.json", "The filename to be checked")
 	baseTemperaturePtr := flag.String("b", "1.0", "The lowest base temperature for the concurrent annealers (temperature increases by 2^i for each goroutine i) - lower is quicker; higher is more optimal")
 	endTemperaturePtr := flag.String("e", "0.00001", "The lowest final temperature for the concurrent annealers (temperature increases by 2^i for each goroutine i) - lower is more optimal; higher is quicker")
@@ -299,8 +326,10 @@ func main() {
 		plusOnes[p.PersonOne] = p.PersonTwo
 	}
 
-	var costFunction func([]table, map[string]string) int
+	var costFunction func([]table, map[string]string) float64
 	switch *costFunctionPtr {
+	case "hybrid":
+		costFunction = hybridFunction
 	case "sum":
 		costFunction = sumFunction
 	case "count":
