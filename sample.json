@@ -1,0 +1,249 @@
+{
+	"people": [
+		{
+			"name": "Person 0",
+			"preferences": ["Person 15", "Person 18", "Person 58"]
+		},
+		{
+			"name": "Person 1",
+			"preferences": ["Person 34", "Person 33", "Person 11"]
+		},
+		{
+			"name": "Person 2",
+			"preferences": ["Person 50", "Person 33", "Person 22"]
+		},
+		{
+			"name": "Person 3",
+			"preferences": ["Person 29", "Person 28", "Person 18"]
+		},
+		{
+			"name": "Person 4",
+			"preferences": ["Person 48", "Person 26", "Person 19"]
+		},
+		{
+			"name": "Person 5",
+			"preferences": ["Person 9", "Person 41", "Person 25"]
+		},
+		{
+			"name": "Person 6",
+			"preferences": ["Person 1", "Person 51", "Person 2"]
+		},
+		{
+			"name": "Person 7",
+			"preferences": ["Person 55", "Person 38", "Person 20"]
+		},
+		{
+			"name": "Person 8",
+			"preferences": ["Person 55", "Person 47", "Person 6"]
+		},
+		{
+			"name": "Person 9",
+			"preferences": ["Person 11", "Person 31", "Person 21"]
+		},
+		{
+			"name": "Person 10",
+			"preferences": ["Person 12", "Person 50", "Person 26"]
+		},
+		{
+			"name": "Person 11",
+			"preferences": ["Person 26", "Person 43", "Person 52"]
+		},
+		{
+			"name": "Person 12",
+			"preferences": ["Person 43", "Person 38", "Person 48"]
+		},
+		{
+			"name": "Person 13",
+			"preferences": ["Person 45", "Person 9", "Person 12"]
+		},
+		{
+			"name": "Person 14",
+			"preferences": ["Person 2", "Person 0", "Person 11"]
+		},
+		{
+			"name": "Person 15",
+			"preferences": ["Person 26", "Person 16", "Person 46"]
+		},
+		{
+			"name": "Person 16",
+			"preferences": ["Person 0", "Person 8", "Person 8"]
+		},
+		{
+			"name": "Person 17",
+			"preferences": ["Person 5", "Person 12", "Person 47"]
+		},
+		{
+			"name": "Person 18",
+			"preferences": ["Person 20", "Person 23", "Person 38"]
+		},
+		{
+			"name": "Person 19",
+			"preferences": ["Person 41", "Person 26", "Person 42"]
+		},
+		{
+			"name": "Person 20",
+			"preferences": ["Person 18", "Person 18", "Person 14"]
+		},
+		{
+			"name": "Person 21",
+			"preferences": ["Person 42", "Person 59", "Person 30"]
+		},
+		{
+			"name": "Person 22",
+			"preferences": ["Person 15", "Person 50", "Person 42"]
+		},
+		{
+			"name": "Person 23",
+			"preferences": ["Person 58", "Person 17", "Person 54"]
+		},
+		{
+			"name": "Person 24",
+			"preferences": ["Person 30", "Person 58", "Person 53"]
+		},
+		{
+			"name": "Person 25",
+			"preferences": ["Person 37", "Person 6", "Person 28"]
+		},
+		{
+			"name": "Person 26",
+			"preferences": ["Person 52", "Person 50", "Person 37"]
+		},
+		{
+			"name": "Person 27",
+			"preferences": ["Person 58", "Person 13", "Person 20"]
+		},
+		{
+			"name": "Person 28",
+			"preferences": ["Person 4", "Person 44", "Person 12"]
+		},
+		{
+			"name": "Person 29",
+			"preferences": ["Person 15", "Person 11", "Person 49"]
+		},
+		{
+			"name": "Person 30",
+			"preferences": ["Person 46", "Person 58", "Person 25"]
+		},
+		{
+			"name": "Person 31",
+			"preferences": ["Person 34", "Person 54", "Person 34"]
+		},
+		{
+			"name": "Person 32",
+			"preferences": ["Person 22", "Person 41", "Person 54"]
+		},
+		{
+			"name": "Person 33",
+			"preferences": ["Person 18", "Person 55", "Person 42"]
+		},
+		{
+			"name": "Person 34",
+			"preferences": ["Person 8", "Person 36", "Person 29"]
+		},
+		{
+			"name": "Person 35",
+			"preferences": ["Person 6", "Person 19", "Person 44"]
+		},
+		{
+			"name": "Person 36",
+			"preferences": ["Person 44", "Person 43", "Person 14"]
+		},
+		{
+			"name": "Person 37",
+			"preferences": ["Person 40", "Person 14", "Person 50"]
+		},
+		{
+			"name": "Person 38",
+			"preferences": ["Person 27", "Person 8", "Person 49"]
+		},
+		{
+			"name": "Person 39",
+			"preferences": ["Person 17", "Person 45", "Person 1"]
+		},
+		{
+			"name": "Person 40",
+			"preferences": ["Person 12", "Person 7", "Person 30"]
+		},
+		{
+			"name": "Person 41",
+			"preferences": ["Person 56", "Person 45", "Person 9"]
+		},
+		{
+			"name": "Person 42",
+			"preferences": ["Person 38", "Person 30", "Person 34"]
+		},
+		{
+			"name": "Person 43",
+			"preferences": ["Person 51", "Person 4", "Person 1"]
+		},
+		{
+			"name": "Person 44",
+			"preferences": ["Person 46", "Person 55", "Person 59"]
+		},
+		{
+			"name": "Person 45",
+			"preferences": ["Person 30", "Person 57", "Person 41"]
+		},
+		{
+			"name": "Person 46",
+			"preferences": ["Person 4", "Person 14", "Person 39"]
+		},
+		{
+			"name": "Person 47",
+			"preferences": ["Person 11", "Person 12", "Person 23"]
+		},
+		{
+			"name": "Person 48",
+			"preferences": ["Person 58", "Person 22", "Person 43"]
+		},
+		{
+			"name": "Person 49",
+			"preferences": ["Person 37", "Person 48", "Person 47"]
+		},
+		{
+			"name": "Person 50",
+			"preferences": ["Person 14", "Person 53", "Person 12"]
+		},
+		{
+			"name": "Person 51",
+			"preferences": ["Person 19", "Person 5", "Person 10"]
+		},
+		{
+			"name": "Person 52",
+			"preferences": ["Person 55", "Person 42", "Person 36"]
+		},
+		{
+			"name": "Person 53",
+			"preferences": ["Person 9", "Person 49", "Person 20"]
+		},
+		{
+			"name": "Person 54",
+			"preferences": ["Person 5", "Person 15", "Person 37"]
+		},
+		{
+			"name": "Person 55",
+			"preferences": ["Person 47", "Person 1", "Person 33"]
+		},
+		{
+			"name": "Person 56",
+			"preferences": ["Person 58", "Person 51", "Person 42"]
+		},
+		{
+			"name": "Person 57",
+			"preferences": ["Person 8", "Person 40", "Person 43"]
+		},
+		{
+			"name": "Person 58",
+			"preferences": ["Person 7", "Person 12", "Person 30"]
+		},
+		{
+			"name": "Person 59",
+			"preferences": ["Person 56", "Person 27", "Person 4"]
+		},
+		{
+			"name": "Person 60",
+			"preferences": ["Person 31", "Person 40", "Person 21"]
+		}
+	],
+	"tables": [3, 7, 6, 5, 4, 10, 9, 4, 7, 6]
+}

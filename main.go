@@ -30,7 +30,7 @@ type problem struct {
 }
 
 // the main annealing function
-func anneal(people []person, tables []table, baseTemperature float64, finalTemperature float64, coolingRate float64, internalIterations int, swapCount int, concurrentAnnealerCount int) (result []table) {
+func anneal(people []person, tables []table, costFunction func([]table) int, baseTemperature float64, finalTemperature float64, coolingRate float64, internalIterations int, swapCount int, concurrentAnnealerCount int) (result []table) {
 	initialSolution := randomInitialisation(people, tables)
 
 	// create a channel for concurrent annealers of differing temperatures
@@ -49,14 +49,14 @@ func anneal(people []person, tables []table, baseTemperature float64, finalTempe
 	for baseTemperature > finalTemperature {
 
 		for i := 0; i < concurrentAnnealerCount; i++ {
-			go annealerInternalIterator(annealerSolutions[i], baseTemperature*math.Pow(2, float64(i)), internalIterations, swapCount, annealerSolution, annealerCost)
+			go annealerInternalIterator(annealerSolutions[i], costFunction, baseTemperature*math.Pow(2, float64(i)), internalIterations, swapCount, annealerSolution, annealerCost)
 			annealerSolutions[i] = <-annealerSolution
 			annealerCosts[i] = <-annealerCost
 		}
 
 		// If a hotter goroutine has a better solution than a colder one then we swap the solutions
 		for i := concurrentAnnealerCount - 1; i > 0; i-- {
-			if annealerCosts[i] < annealerCosts[i-1] {
+			if annealerCosts[i] > annealerCosts[i-1] {
 				annealerSolutions[i], annealerSolutions[i-1] = annealerSolutions[i-1], annealerSolutions[i]
 				annealerCosts[i], annealerCosts[i-1] = annealerCosts[i-1], annealerCosts[i]
 			}
@@ -71,7 +71,7 @@ func anneal(people []person, tables []table, baseTemperature float64, finalTempe
 
 // Gets a neighbouring candidate solution and runs the probibalistic steps of the annealing process as many times as
 // specified by the internalIterations count.
-func annealerInternalIterator(candidateSolution []table, temperature float64, internalIterations int, swapCount int, as chan []table, ac chan int) {
+func annealerInternalIterator(candidateSolution []table, costFunction func([]table) int, temperature float64, internalIterations int, swapCount int, as chan []table, ac chan int) {
 
 	// Set updatedSolution and updatedCost to the current values associated with candidateSolution
 	updatedSolution := copyAssignment(candidateSolution)
@@ -138,13 +138,29 @@ func getNeighbour(currentAssignment []table, swapCount int) (neighbourAssignment
 }
 
 // the cost function is the sum of preferences
-func costFunction(assignment []table) (cost int) {
+func sumFunction(assignment []table) (cost int) {
 	cost = 0
 	for _, table := range assignment {
 		for _, person := range table.people {
 			for _, preference := range person.Preferences {
 				if table.peopleMap[preference] {
 					cost++
+				}
+			}
+		}
+	}
+	return cost
+}
+
+// the cost function is the count of people with >= 1 preferences
+func countFunction(assignment []table) (cost int) {
+	cost = 0
+	for _, table := range assignment {
+		for _, person := range table.people {
+			for _, preference := range person.Preferences {
+				if table.peopleMap[preference] {
+					cost++
+					break
 				}
 			}
 		}
@@ -214,6 +230,7 @@ func main() {
 	// generate the random seed
 	rand.Seed(time.Now().Unix())
 
+	costFunctionPtr := flag.String("m", "sum", "Whether the program should maximise the total number of satisifed preferences or the number of people with at least 1 satisfied preference")
 	filePtr := flag.String("f", "input.json", "The filename to be checked")
 	baseTemperaturePtr := flag.String("b", "1.0", "The lowest base temperature for the concurrent annealers (temperature increases by 2^i for each goroutine i)")
 	endTemperaturePtr := flag.String("e", "0.00001", "The lowest final temperature for the concurrent annealers (temperature increases by 2^i for each goroutine i)")
@@ -252,7 +269,17 @@ func main() {
 		initialTables[i].peopleMap = make(map[string]bool)
 	}
 
-	solution := anneal(problemContent.People, initialTables, baseTemperature, endTemperature, coolingRate, internalIterations, swapCount, annealerCount)
+	var costFunction func([]table) int
+	switch *costFunctionPtr {
+	case "sum":
+		costFunction = sumFunction
+	case "count":
+		costFunction = countFunction
+	default:
+		log.Fatal("provided cost function parameter not understood")
+	}
+
+	solution := anneal(problemContent.People, initialTables, costFunction, baseTemperature, endTemperature, coolingRate, internalIterations, swapCount, annealerCount)
 
 	printSolution(solution)
 }
