@@ -167,8 +167,8 @@ func randomInitialisation(people []person, tables []table) (assignment []table) 
 
 	// now just fill forwards
 	pos := 0
-	for _, table := range assignment {
-		table.people = people[pos : pos+table.capacity]
+	for i, table := range assignment {
+		assignment[i].people = people[pos : pos+table.capacity]
 		for _, person := range table.people {
 			table.peopleMap[person.Name] = true
 		}
