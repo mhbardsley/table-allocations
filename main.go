@@ -197,74 +197,22 @@ func countFunction(assignment []table, plusOnes map[string]string) (cost float64
 // this cost function presents a hybrid - prioritising everyone having >= 1 preference whilst keeping as many preferences
 func hybridFunction(assignment []table, plusOnes map[string]string) (cost float64) {
 	noOfPeople := getNoOfPeople(assignment)
-	mostPrefs := getHighestPrefs(assignment)
-	highestPossibleCost := math.Max(float64(noOfPeople), float64(noOfPeople*mostPrefs))
+	totalPrefs := getTotalPrefs(assignment)
+	highestPossibleCost := math.Max(float64(noOfPeople), float64(totalPrefs))
 	count := countFunction(assignment, plusOnes)
 	sum := sumFunction(assignment, plusOnes)
 	return count*highestPossibleCost + sum
 }
 
-// this cost function assumes the preferences are ranked
-func rankedFunction(assignment []table, plusOnes map[string]string) (cost float64) {
-	// need to make sure the penalty for not having a plus one is greater than any possible combination of preferences
-	noOfPenalties := 0
-	cost = 0
+// getTotalPrefs returns the total number of preferences across the assignment
+func getTotalPrefs(assignment []table) int {
+	current := 0
 	for _, table := range assignment {
 		for _, person := range table.people {
-			plusOne, exists := plusOnes[person.Name]
-			if exists && !table.peopleMap[plusOne] {
-				noOfPenalties++
-			}
-			for i, preference := range person.Preferences {
-				if table.peopleMap[preference] {
-					cost += math.Exp(float64(-i))
-				}
-			}
+			current += len(person.Preferences)
 		}
 	}
-	if noOfPenalties > 0 {
-		cost = float64(-noOfPenalties)
-	}
-	return cost
-}
-
-// this cost function assumes the preferences are ranked and we want to still have everyone matched to at least one person
-func rankedHybridFunction(assignment []table, plusOnes map[string]string) (cost float64) {
-	var additivePower int
-	mostPrefs := getHighestPrefs(assignment)
-	// need to make sure the penalty for not having a plus one is greater than any possible combination of preferences
-	noOfPenalties := 0
-	cost = 0
-	for _, table := range assignment {
-		for _, person := range table.people {
-			additivePower = 0
-			plusOne, exists := plusOnes[person.Name]
-			if exists && !table.peopleMap[plusOne] {
-				noOfPenalties++
-			}
-			for i, preference := range person.Preferences {
-				if table.peopleMap[preference] {
-					cost += math.Exp(float64(-(mostPrefs*additivePower + i)))
-					additivePower++
-				}
-			}
-		}
-	}
-	if noOfPenalties > 0 {
-		cost = float64(-noOfPenalties)
-	}
-	return cost
-}
-
-// getHighestPrefs returns the highest number of preferences across the assignment
-func getHighestPrefs(assignment []table) int {
-	currentHighest := 0.0
-	for _, table := range assignment {
-		for _, person := range table.people {
-			currentHighest = math.Max(currentHighest, float64(len(person.Preferences)))
-		}
-	}
-	return int(currentHighest)
+	return current
 }
 
 // getNoOfPeople returns the number of people in the assignment
@@ -391,10 +339,6 @@ func main() {
 		costFunction = sumFunction
 	case "count":
 		costFunction = countFunction
-	case "ranked":
-		costFunction = rankedFunction
-	case "rh":
-		costFunction = rankedHybridFunction
 	default:
 		log.Fatal("provided cost function parameter not understood")
 	}
