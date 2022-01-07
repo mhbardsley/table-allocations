@@ -243,6 +243,45 @@ func rankedFunction(assignment []table, plusOnes map[string]string) (cost float6
 	return cost
 }
 
+// this cost function assumes the preferences are ranked and we want to still have everyone matched to at least one person
+func rankedHybridFunction(assignment []table, plusOnes map[string]string) (cost float64) {
+	var additivePower int
+	mostPrefs := getHighestPrefs(assignment)
+	// need to make sure the penalty for not having a plus one is greater than any possible combination of preferences
+	noOfPenalties := 0
+	cost = 0
+	for _, table := range assignment {
+		for _, person := range table.people {
+			additivePower = 0
+			plusOne, exists := plusOnes[person.Name]
+			if exists && !table.peopleMap[plusOne] {
+				noOfPenalties++
+			}
+			for i, preference := range person.Preferences {
+				if table.peopleMap[preference] {
+					cost += math.Exp(float64(-(mostPrefs*additivePower + i)))
+					additivePower++
+				}
+			}
+		}
+	}
+	if noOfPenalties > 0 {
+		cost = float64(-noOfPenalties)
+	}
+	return cost
+}
+
+// getHighestPrefs returns the highest number of preferences across the assignment
+func getHighestPrefs(assignment []table) int {
+	currentHighest := 0.0
+	for _, table := range assignment {
+		for _, person := range table.people {
+			currentHighest = math.Max(currentHighest, float64(len(person.Preferences)))
+		}
+	}
+	return int(currentHighest)
+}
+
 func acceptanceProbability(oldCost float64, newCost float64, temperature float64) (probability float64) {
 	return math.Exp((newCost - oldCost) / temperature)
 }
@@ -360,6 +399,8 @@ func main() {
 		costFunction = countFunction
 	case "ranked":
 		costFunction = rankedFunction
+	case "rh":
+		costFunction = rankedHybridFunction
 	default:
 		log.Fatal("provided cost function parameter not understood")
 	}
