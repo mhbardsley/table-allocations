@@ -60,6 +60,8 @@ func anneal(people []person, tables []table, plusOnes map[string]string, costFun
 			annealerCosts[i] = <-annealerCost
 		}
 
+		log.Println(annealerCosts)
+
 		// If a hotter goroutine has a better solution than a colder one then we swap the solutions
 		for i := concurrentAnnealerCount - 1; i > 0; i-- {
 			if annealerCosts[i] > annealerCosts[i-1] {
@@ -192,31 +194,14 @@ func countFunction(assignment []table, plusOnes map[string]string) (cost float64
 	return cost
 }
 
-// this cost function presents a hybrid
+// this cost function presents a hybrid - prioritising everyone having >= 1 preference whilst keeping as many preferences
 func hybridFunction(assignment []table, plusOnes map[string]string) (cost float64) {
-	var additivePower int
-	// need to make sure the penalty for not having a plus one is greater than any possible combination of preferences
-	noOfPenalties := 0
-	cost = 0
-	for _, table := range assignment {
-		for _, person := range table.people {
-			additivePower = 0
-			plusOne, exists := plusOnes[person.Name]
-			if exists && !table.peopleMap[plusOne] {
-				noOfPenalties++
-			}
-			for _, preference := range person.Preferences {
-				if table.peopleMap[preference] {
-					cost += math.Exp(float64(-additivePower))
-					additivePower++
-				}
-			}
-		}
-	}
-	if noOfPenalties > 0 {
-		cost = float64(-noOfPenalties)
-	}
-	return cost
+	noOfPeople := getNoOfPeople(assignment)
+	mostPrefs := getHighestPrefs(assignment)
+	highestPossibleCost := math.Max(float64(noOfPeople), float64(noOfPeople*mostPrefs))
+	count := countFunction(assignment, plusOnes)
+	sum := sumFunction(assignment, plusOnes)
+	return count*highestPossibleCost + sum
 }
 
 // this cost function assumes the preferences are ranked
@@ -280,6 +265,15 @@ func getHighestPrefs(assignment []table) int {
 		}
 	}
 	return int(currentHighest)
+}
+
+// getNoOfPeople returns the number of people in the assignment
+func getNoOfPeople(assignment []table) int {
+	current := 0
+	for _, table := range assignment {
+		current += len(table.people)
+	}
+	return current
 }
 
 func acceptanceProbability(oldCost float64, newCost float64, temperature float64) (probability float64) {
