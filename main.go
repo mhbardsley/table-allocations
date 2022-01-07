@@ -60,8 +60,6 @@ func anneal(people []person, tables []table, plusOnes map[string]string, costFun
 			annealerCosts[i] = <-annealerCost
 		}
 
-		log.Println(annealerCosts)
-
 		// If a hotter goroutine has a better solution than a colder one then we swap the solutions
 		for i := concurrentAnnealerCount - 1; i > 0; i-- {
 			if annealerCosts[i] > annealerCosts[i-1] {
@@ -268,7 +266,10 @@ func copyAssignment(initialAssignment []table) (copiedAssignment []table) {
 	return copiedAssignment
 }
 
-func printSolution(solution []table) {
+func printSolution(solution []table, plusOnes map[string]string) {
+	fmt.Printf("Found a solution where %d people are given a preference (i.e. %d people have not been allocated at least one of their preferences). %d preferences are given in total", int(countFunction(solution, plusOnes)), getNoOfPeople(solution)-int(countFunction(solution, plusOnes)), int(sumFunction(solution, plusOnes)))
+	fmt.Println()
+	fmt.Println()
 	for tableNo, table := range solution {
 		fmt.Printf("Table %d (capacity %d)", tableNo, table.capacity)
 		fmt.Println()
@@ -345,5 +346,5 @@ func main() {
 
 	solution := anneal(problemContent.People, initialTables, plusOnes, costFunction, baseTemperature, endTemperature, coolingRate, internalIterations, swapCount, annealerCount)
 
-	printSolution(solution)
+	printSolution(solution, plusOnes)
 }
