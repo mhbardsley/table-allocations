@@ -305,7 +305,7 @@ func main() {
 	// generate the random seed
 	rand.Seed(time.Now().Unix())
 
-	costFunctionPtr := flag.String("m", "hybrid", "Whether the program should: maximise the total number of satisifed preferences; maximise the number of people with at least 1 satisfied preference; provide a hybrid of these")
+	costFunctionPtr := flag.String("m", "hybrid", "Whether the program should: maximise the total number of satisifed preferences; maximise the number of people with at least 1 satisfied preference; provide a hybrid of these; assume preferences are ranked (left most preferred, right least preferred)")
 	filePtr := flag.String("f", "input.json", "The filename to be checked")
 	baseTemperaturePtr := flag.String("b", "1.0", "The lowest base temperature for the concurrent annealers (temperature increases by 2^i for each goroutine i) - lower is quicker; higher is more optimal")
 	endTemperaturePtr := flag.String("e", "0.00001", "The lowest final temperature for the concurrent annealers (temperature increases by 2^i for each goroutine i) - lower is more optimal; higher is quicker")
