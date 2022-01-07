@@ -194,21 +194,45 @@ func countFunction(assignment []table, plusOnes map[string]string) (cost float64
 
 // this cost function presents a hybrid
 func hybridFunction(assignment []table, plusOnes map[string]string) (cost float64) {
-	var additive float64
+	var additivePower int
 	// need to make sure the penalty for not having a plus one is greater than any possible combination of preferences
 	noOfPenalties := 0
 	cost = 0
 	for _, table := range assignment {
 		for _, person := range table.people {
-			additive = 1
+			additivePower = 0
 			plusOne, exists := plusOnes[person.Name]
 			if exists && !table.peopleMap[plusOne] {
 				noOfPenalties++
 			}
 			for _, preference := range person.Preferences {
 				if table.peopleMap[preference] {
-					cost += additive
-					additive /= 2
+					cost += math.Exp(float64(-additivePower))
+					additivePower++
+				}
+			}
+		}
+	}
+	if noOfPenalties > 0 {
+		cost = float64(-noOfPenalties)
+	}
+	return cost
+}
+
+// this cost function assumes the preferences are ranked
+func rankedFunction(assignment []table, plusOnes map[string]string) (cost float64) {
+	// need to make sure the penalty for not having a plus one is greater than any possible combination of preferences
+	noOfPenalties := 0
+	cost = 0
+	for _, table := range assignment {
+		for _, person := range table.people {
+			plusOne, exists := plusOnes[person.Name]
+			if exists && !table.peopleMap[plusOne] {
+				noOfPenalties++
+			}
+			for i, preference := range person.Preferences {
+				if table.peopleMap[preference] {
+					cost += math.Exp(float64(-i))
 				}
 			}
 		}
@@ -334,6 +358,8 @@ func main() {
 		costFunction = sumFunction
 	case "count":
 		costFunction = countFunction
+	case "ranked":
+		costFunction = rankedFunction
 	default:
 		log.Fatal("provided cost function parameter not understood")
 	}
