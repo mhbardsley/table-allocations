@@ -14,6 +14,6 @@ Algorithm for allocating tables based on preferences, using simulated annealing
 
 All flags are optional and most do not need touching. If you have not named your JSON file `input.json`, you need to supply an `-f` flag, e.g. `table-allocations -f sample.json` will carry out the algorithm on the sample data.
 
-Another useful flag is `-m`, which specifies what is being optimised. There are four options: `sum`, which will optimise the total number of preferences satisfied; `count`, which will optimise the number of people with at least 1 satisfied preference; `hybrid` (default), which aims to compromise between these; `ranked`, which assumes the preferences are ranked (with the first preference being the highest, right-most/last being the least preffered out of what's given). To choose `ranked`, for example, use `table-allocations -m ranked`.
+Another useful flag is `-m`, which specifies what is being optimised. There are three options: `sum`, which will optimise the total number of preferences satisfied; `count`, which will optimise the number of people with at least 1 satisfied preference; `hybrid` (default), which aims to compromise between these. To choose `sum`, for example, use `table-allocations -m sum`.
 
 For all other flags (which don't really need tweaking), you can run with the `-h` flag, i.e. `table-allocations -h`.
