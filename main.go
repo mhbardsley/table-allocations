@@ -47,6 +47,15 @@ func (a *assignment) Fitness() float64 { return a.score(a.tables) }
 
 func (a *assignment) Mutate() { swapTwo(a.tables) }
 
+// swapAt swaps the people at positions pa, pb across tables a, b, keeping member sets in sync.
+func swapAt(a, b *table, pa, pb int) {
+	delete(a.members, a.people[pa].Name)
+	delete(b.members, b.people[pb].Name)
+	a.people[pa], b.people[pb] = b.people[pb], a.people[pa]
+	a.members[a.people[pa].Name] = struct{}{}
+	b.members[b.people[pb].Name] = struct{}{}
+}
+
 // swapTwo swaps a randomly-chosen pair of people across two distinct tables.
 func swapTwo(ts []table) {
 	if len(ts) < 2 {
@@ -57,14 +66,33 @@ func swapTwo(ts []table) {
 	if j >= i {
 		j++
 	}
-	a, b := &ts[i], &ts[j]
-	pa := rand.IntN(a.capacity)
-	pb := rand.IntN(b.capacity)
-	a.people[pa], b.people[pb] = b.people[pb], a.people[pa]
-	delete(a.members, b.people[pb].Name)
-	delete(b.members, a.people[pa].Name)
-	a.members[a.people[pa].Name] = struct{}{}
-	b.members[b.people[pb].Name] = struct{}{}
+	swapAt(&ts[i], &ts[j], rand.IntN(ts[i].capacity), rand.IntN(ts[j].capacity))
+}
+
+// localOptimize performs greedy pairwise-swap hill-climbing until no swap improves fitness.
+// The GA explores; this exploits — it polishes the best individual to a local optimum.
+func localOptimize(a *assignment) {
+	for {
+		improved := false
+		for i := range a.tables {
+			for j := i + 1; j < len(a.tables); j++ {
+				for pi := range a.tables[i].capacity {
+					for pj := range a.tables[j].capacity {
+						before := a.score(a.tables)
+						swapAt(&a.tables[i], &a.tables[j], pi, pj)
+						if a.score(a.tables) > before {
+							improved = true
+						} else {
+							swapAt(&a.tables[i], &a.tables[j], pi, pj)
+						}
+					}
+				}
+			}
+		}
+		if !improved {
+			return
+		}
+	}
 }
 
 // scoreParts returns (people with ≥1 satisfied preference, total preferences satisfied, plus-one violations).
@@ -249,6 +277,8 @@ func main() {
 		GenerateIndividual:  generator(prob.People, prob.Tables, score),
 		Crossover:           crossover(prob.Tables, score),
 		ContinuingCondition: func() bool { return time.Now().Before(deadline) },
+		Elitism:             1,
+		LocalSearch:         localOptimize,
 	})
 
 	printSolution(best, plusOnes)
