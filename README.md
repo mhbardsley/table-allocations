@@ -1,19 +1,22 @@
 # table-allocations
-Algorithm for allocating tables based on preferences, using simulated annealing
+Allocate people to tables based on their seating preferences, using a genetic algorithm
+([jubilant-octo-palm-tree](https://github.com/mhbardsley/jubilant-octo-palm-tree)).
 
-## Prerequisities
+## Prerequisites
 - An installation of Go: https://go.dev/dl/
 
 ## Setup
 - `go install github.com/mhbardsley/table-allocations@latest`
-- Create a JSON file to hold people, their preferences and table capacities. See `sample.json` as an example. (Note: the program will, by default, look for a `input.json` file)
+- Create a JSON file holding people, their preferences and table capacities. See `sample.json` as an example. By default the program looks for `input.json`.
 
 ## Running the program
 - `table-allocations [flags]`
-- Note: there may be a small delay between running the program and getting the result (see below for inspecting flags to change speed/optimisation trade-off)
 
-All flags are optional and most do not need touching. If you have not named your JSON file `input.json`, you need to supply an `-f` flag, e.g. `table-allocations -f sample.json` will carry out the algorithm on the sample data.
+All flags are optional. If your input file is not named `input.json`, supply `-f`, e.g. `table-allocations -f sample.json`.
 
-Another useful flag is `-m`, which specifies what is being optimised. There are three options: `sum`, which will optimise the total number of preferences satisfied; `count`, which will optimise the number of people with at least 1 satisfied preference; `hybrid` (default), which aims to compromise between these. To choose `sum`, for example, use `table-allocations -m sum`.
+The `-m` flag picks what to optimise:
+- `sum` — total number of preferences satisfied
+- `count` — number of people with at least one satisfied preference
+- `hybrid` (default) — prioritises `count`, breaking ties on `sum`
 
-For all other flags (which don't really need tweaking), you can run with the `-h` flag, i.e. `table-allocations -h`.
+The `-d` flag sets the runtime (default `5s`); longer runs find better solutions. Use `-h` to see all flags.

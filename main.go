@@ -1,27 +1,22 @@
+// Allocate people to tables to maximise satisfied seating preferences.
 package main
 
 import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
-	"math"
-	"math/rand"
-	"strconv"
+	"math/rand/v2"
+	"os"
+	"slices"
 	"time"
+
+	algo "github.com/mhbardsley/jubilant-octo-palm-tree"
 )
 
-// define the datatypes needed, namely people and tables
 type person struct {
-	Name        string   `json:"name"` // must be unique
+	Name        string   `json:"name"`
 	Preferences []string `json:"preferences"`
-}
-
-type table struct {
-	capacity  int
-	people    []person
-	peopleMap map[string]bool
 }
 
 type plusOne struct {
@@ -35,316 +30,226 @@ type problem struct {
 	PlusOnes []plusOne `json:"plusOnes"`
 }
 
-// the main annealing function
-func anneal(people []person, tables []table, plusOnes map[string]string, costFunction func([]table, map[string]string) float64, baseTemperature float64, finalTemperature float64, coolingRate float64, internalIterations int, swapCount int, concurrentAnnealerCount int) (result []table) {
-	initialSolution := randomInitialisation(people, tables)
-
-	// create a channel for concurrent annealers of differing temperatures
-	annealerSolution := make(chan []table)
-	annealerCost := make(chan float64)
-
-	annealerSolutions := make([][]table, concurrentAnnealerCount)
-	annealerCosts := make([]float64, concurrentAnnealerCount)
-
-	for i := 0; i < concurrentAnnealerCount; i++ {
-		annealerSolutions[i] = copyAssignment(initialSolution)
-		annealerCosts[i] = costFunction(initialSolution, plusOnes)
-	}
-
-	// while we haven't hit the final temperature
-	for baseTemperature > finalTemperature {
-
-		for i := 0; i < concurrentAnnealerCount; i++ {
-			go annealerInternalIterator(annealerSolutions[i], plusOnes, costFunction, baseTemperature*math.Pow(2, float64(i)), internalIterations, swapCount, annealerSolution, annealerCost)
-			annealerSolutions[i] = <-annealerSolution
-			annealerCosts[i] = <-annealerCost
-		}
-
-		// If a hotter goroutine has a better solution than a colder one then we swap the solutions
-		for i := concurrentAnnealerCount - 1; i > 0; i-- {
-			if annealerCosts[i] > annealerCosts[i-1] {
-				annealerSolutions[i], annealerSolutions[i-1] = annealerSolutions[i-1], annealerSolutions[i]
-				annealerCosts[i], annealerCosts[i-1] = annealerCosts[i-1], annealerCosts[i]
-			}
-		}
-
-		// Cool all of the goroutines
-		baseTemperature *= coolingRate
-	}
-
-	return annealerSolutions[0]
+// table holds the seated people plus a name set for O(1) "is X at this table?" lookups.
+type table struct {
+	capacity int
+	people   []person
+	members  map[string]struct{}
 }
 
-// Gets a neighbouring candidate solution and runs the probibalistic steps of the annealing process as many times as
-// specified by the internalIterations count.
-func annealerInternalIterator(candidateSolution []table, plusOnes map[string]string, costFunction func([]table, map[string]string) float64, temperature float64, internalIterations int, swapCount int, as chan []table, ac chan float64) {
-
-	// Set updatedSolution and updatedCost to the current values associated with candidateSolution
-	updatedSolution := copyAssignment(candidateSolution)
-	updatedCost := costFunction(updatedSolution, plusOnes)
-
-	for i := 0; i < internalIterations; i++ {
-		newCandidateSolution := getNeighbour(updatedSolution, swapCount)
-		newCandidateCost := costFunction(newCandidateSolution, plusOnes)
-
-		// if the cost is more then switch to that solution
-		if newCandidateCost > updatedCost {
-			updatedSolution = newCandidateSolution
-			updatedCost = newCandidateCost
-
-			// And finally switch to a more costly solution randomly based on the acceptance probablity
-		} else {
-			ap := acceptanceProbability(updatedCost, newCandidateCost, temperature)
-
-			if ap > rand.Float64() {
-				updatedSolution = newCandidateSolution
-				updatedCost = newCandidateCost
-			}
-		}
-	}
-
-	as <- updatedSolution
-	ac <- updatedCost
+// assignment is a candidate seating plan; it implements algo.Individual.
+type assignment struct {
+	tables []table
+	score  func([]table) float64
 }
 
-// Gets a neighbouring candidate solution to the current one
-func getNeighbour(currentAssignment []table, swapCount int) (neighbourAssignment []table) {
+func (a *assignment) Fitness() float64 { return a.score(a.tables) }
 
-	cal := len(currentAssignment)
+func (a *assignment) Mutate() { swapTwo(a.tables) }
 
-	neighbourAssignment = copyAssignment(currentAssignment)
-
-	for i := 0; i < swapCount; i++ {
-		// generate two distinct random numbers so we know we are shuffling people in different tables
-		randOne := rand.Intn(cal)
-		randTwo := rand.Intn(cal - 1)
-
-		if randTwo >= randOne {
-			randTwo++
-		}
-		tableOne := neighbourAssignment[randOne]
-		tableTwo := neighbourAssignment[randTwo]
-
-		// generate two further indexes for the people
-		randThree := rand.Intn(tableOne.capacity)
-		randFour := rand.Intn(tableTwo.capacity)
-
-		personOne := tableOne.people[randThree]
-		personTwo := tableTwo.people[randFour]
-
-		// Swap the two randomly selected elements
-		tableOne.people[randThree], tableTwo.people[randFour] = personTwo, personOne
-		delete(tableOne.peopleMap, personOne.Name)
-		delete(tableTwo.peopleMap, personTwo.Name)
-		tableOne.peopleMap[personTwo.Name] = true
-		tableTwo.peopleMap[personOne.Name] = true
+// swapTwo swaps a randomly-chosen pair of people across two distinct tables.
+func swapTwo(ts []table) {
+	if len(ts) < 2 {
+		return
 	}
-
-	return neighbourAssignment
+	i := rand.IntN(len(ts))
+	j := rand.IntN(len(ts) - 1)
+	if j >= i {
+		j++
+	}
+	a, b := &ts[i], &ts[j]
+	pa := rand.IntN(a.capacity)
+	pb := rand.IntN(b.capacity)
+	a.people[pa], b.people[pb] = b.people[pb], a.people[pa]
+	delete(a.members, b.people[pb].Name)
+	delete(b.members, a.people[pa].Name)
+	a.members[a.people[pa].Name] = struct{}{}
+	b.members[b.people[pb].Name] = struct{}{}
 }
 
-// the cost function is the sum of preferences
-func sumFunction(assignment []table, plusOnes map[string]string) (cost float64) {
-	// need to make sure the penalty for not having a plus one is greater than any possible combination of preferences
-	noOfPenalties := 0
-	cost = 0
-	for _, table := range assignment {
-		for _, person := range table.people {
-			plusOne, exists := plusOnes[person.Name]
-			if exists && !table.peopleMap[plusOne] {
-				noOfPenalties++
-			}
-			for _, preference := range person.Preferences {
-				if table.peopleMap[preference] {
-					cost++
+// scoreParts returns (people with ≥1 satisfied preference, total preferences satisfied, plus-one violations).
+func scoreParts(ts []table, plusOnes map[string]string) (count, sum, penalties int) {
+	for _, t := range ts {
+		for _, p := range t.people {
+			if pair, ok := plusOnes[p.Name]; ok {
+				if _, together := t.members[pair]; !together {
+					penalties++
 				}
 			}
-		}
-	}
-	if noOfPenalties > 0 {
-		cost = float64(-noOfPenalties)
-	}
-	return cost
-}
-
-// the cost function is the count of people with >= 1 preferences
-func countFunction(assignment []table, plusOnes map[string]string) (cost float64) {
-	// need to make sure the penalty for not having a plus one is greater than any possible combination of preferences
-	noOfPenalties := 0
-	cost = 0
-	for _, table := range assignment {
-		for _, person := range table.people {
-			plusOne, exists := plusOnes[person.Name]
-			if exists && !table.peopleMap[plusOne] {
-				noOfPenalties++
-			}
-			for _, preference := range person.Preferences {
-				if table.peopleMap[preference] {
-					cost++
-					break
+			satisfied := false
+			for _, pref := range p.Preferences {
+				if _, ok := t.members[pref]; ok {
+					sum++
+					satisfied = true
 				}
 			}
+			if satisfied {
+				count++
+			}
 		}
 	}
-	if noOfPenalties > 0 {
-		cost = float64(-noOfPenalties)
+	return
+}
+
+// scorer returns the fitness function for the chosen mode. Plus-one violations always dominate
+// (a single violation beats any non-violating solution by going negative).
+func scorer(mode string, plusOnes map[string]string, totalPeople, totalPrefs int) (func([]table) float64, error) {
+	switch mode {
+	case "sum":
+		return func(ts []table) float64 {
+			_, sum, pen := scoreParts(ts, plusOnes)
+			if pen > 0 {
+				return -float64(pen)
+			}
+			return float64(sum)
+		}, nil
+	case "count":
+		return func(ts []table) float64 {
+			count, _, pen := scoreParts(ts, plusOnes)
+			if pen > 0 {
+				return -float64(pen)
+			}
+			return float64(count)
+		}, nil
+	case "hybrid":
+		// Weight count high enough that any improvement in count outranks any sum tradeoff.
+		weight := float64(max(totalPeople, totalPrefs))
+		return func(ts []table) float64 {
+			count, sum, pen := scoreParts(ts, plusOnes)
+			if pen > 0 {
+				return -float64(pen)
+			}
+			return float64(count)*weight + float64(sum)
+		}, nil
+	default:
+		return nil, fmt.Errorf("unknown cost function %q (want sum, count, or hybrid)", mode)
 	}
-	return cost
 }
 
-// this cost function presents a hybrid - prioritising everyone having >= 1 preference whilst keeping as many preferences
-func hybridFunction(assignment []table, plusOnes map[string]string) (cost float64) {
-	noOfPeople := getNoOfPeople(assignment)
-	totalPrefs := getTotalPrefs(assignment)
-	highestPossibleCost := math.Max(float64(noOfPeople), float64(totalPrefs))
-	count := countFunction(assignment, plusOnes)
-	sum := sumFunction(assignment, plusOnes)
-	return count*highestPossibleCost + sum
-}
-
-// getTotalPrefs returns the total number of preferences across the assignment
-func getTotalPrefs(assignment []table) int {
-	current := 0
-	for _, table := range assignment {
-		for _, person := range table.people {
-			current += len(person.Preferences)
-		}
-	}
-	return current
-}
-
-// getNoOfPeople returns the number of people in the assignment
-func getNoOfPeople(assignment []table) int {
-	current := 0
-	for _, table := range assignment {
-		current += len(table.people)
-	}
-	return current
-}
-
-func acceptanceProbability(oldCost float64, newCost float64, temperature float64) (probability float64) {
-	return math.Exp((newCost - oldCost) / temperature)
-}
-
-// randomly assigns people to tables
-func randomInitialisation(people []person, tables []table) (assignment []table) {
-	assignment = tables
-
-	for i := range people {
-		j := rand.Intn(i + 1)
-		people[i], people[j] = people[j], people[i]
-	}
-
-	// now just fill forwards
+// pack distributes a flat slice of people into tables of the given capacities.
+func pack(people []person, capacities []int) []table {
+	out := make([]table, len(capacities))
 	pos := 0
-	for i, table := range assignment {
-		assignment[i].people = people[pos : pos+table.capacity]
-		for _, person := range table.people {
-			table.peopleMap[person.Name] = true
+	for i, c := range capacities {
+		seated := slices.Clone(people[pos : pos+c])
+		members := make(map[string]struct{}, c)
+		for _, p := range seated {
+			members[p.Name] = struct{}{}
 		}
-		pos += table.capacity
+		out[i] = table{capacity: c, people: seated, members: members}
+		pos += c
 	}
-	return assignment
+	return out
 }
 
-// copies the assignment
-func copyAssignment(initialAssignment []table) (copiedAssignment []table) {
-	size := len(initialAssignment)
-
-	copiedAssignment = make([]table, size)
-
-	for i := 0; i < size; i++ {
-		copiedAssignment[i].capacity = initialAssignment[i].capacity
-		copiedAssignment[i].people = make([]person, copiedAssignment[i].capacity)
-		copiedAssignment[i].peopleMap = make(map[string]bool)
-		copy(copiedAssignment[i].people, initialAssignment[i].people)
-		for k, v := range initialAssignment[i].peopleMap {
-			copiedAssignment[i].peopleMap[k] = v
-		}
+func generator(people []person, capacities []int, score func([]table) float64) func() *assignment {
+	return func() *assignment {
+		shuffled := slices.Clone(people)
+		rand.Shuffle(len(shuffled), func(i, j int) {
+			shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
+		})
+		return &assignment{tables: pack(shuffled, capacities), score: score}
 	}
-
-	return copiedAssignment
 }
 
-func printSolution(solution []table, plusOnes map[string]string) {
-	fmt.Printf("Found a solution where %d people are given a preference (i.e. %d people have not been allocated at least one of their preferences). %d preferences are given in total", int(countFunction(solution, plusOnes)), getNoOfPeople(solution)-int(countFunction(solution, plusOnes)), int(sumFunction(solution, plusOnes)))
-	fmt.Println()
-	fmt.Println()
-	for tableNo, table := range solution {
-		fmt.Printf("Table %d (capacity %d)", tableNo, table.capacity)
-		fmt.Println()
-		for _, person := range table.people {
-			fmt.Printf("- %s", person.Name)
-			fmt.Println()
+// crossover applies order crossover (OX) so the child is a valid permutation of all attendees:
+// copy a contiguous slice from parent A, then fill the remaining seats in parent B's order.
+func crossover(capacities []int, score func([]table) float64) func(*assignment, *assignment) *assignment {
+	total := 0
+	for _, c := range capacities {
+		total += c
+	}
+	return func(a, b *assignment) *assignment {
+		flatA := flatten(a.tables, total)
+		flatB := flatten(b.tables, total)
+
+		i, j := rand.IntN(total), rand.IntN(total)
+		if i > j {
+			i, j = j, i
 		}
-		if tableNo < len(solution)-1 {
-			fmt.Println()
+
+		child := make([]person, total)
+		used := make(map[string]struct{}, total)
+		for k := i; k < j; k++ {
+			child[k] = flatA[k]
+			used[flatA[k].Name] = struct{}{}
+		}
+		pos := j
+		for k := 0; k < total; k++ {
+			p := flatB[(j+k)%total]
+			if _, taken := used[p.Name]; taken {
+				continue
+			}
+			child[pos%total] = p
+			pos++
+		}
+		return &assignment{tables: pack(child, capacities), score: score}
+	}
+}
+
+func flatten(ts []table, total int) []person {
+	out := make([]person, 0, total)
+	for _, t := range ts {
+		out = append(out, t.people...)
+	}
+	return out
+}
+
+func printSolution(a *assignment, plusOnes map[string]string) {
+	count, sum, _ := scoreParts(a.tables, plusOnes)
+	total := 0
+	for _, t := range a.tables {
+		total += len(t.people)
+	}
+	fmt.Printf("Found a solution where %d people are given a preference (i.e. %d people have not been allocated at least one of their preferences). %d preferences are given in total.\n",
+		count, total-count, sum)
+	for i, t := range a.tables {
+		fmt.Printf("\nTable %d (capacity %d)\n", i, t.capacity)
+		for _, p := range t.people {
+			fmt.Printf("- %s\n", p.Name)
 		}
 	}
 }
 
 func main() {
-	// generate the random seed
-	rand.Seed(time.Now().Unix())
-
-	costFunctionPtr := flag.String("m", "hybrid", "Whether the program should: maximise the total number of satisifed preferences; maximise the number of people with at least 1 satisfied preference; provide a hybrid of these")
-	filePtr := flag.String("f", "input.json", "The filename to be checked")
-	baseTemperaturePtr := flag.String("b", "1.0", "The lowest base temperature for the concurrent annealers (temperature increases by 2^i for each goroutine i) - lower is quicker; higher is more optimal")
-	endTemperaturePtr := flag.String("e", "0.00001", "The lowest final temperature for the concurrent annealers (temperature increases by 2^i for each goroutine i) - lower is more optimal; higher is quicker")
-	coolingRatePtr := flag.String("c", "0.9", "The rate of cooling for each step in the annealing process (a number greater than 0 and less than 1) - closer to 0 is quicker; closer to 1 is more optimal")
-	iterationPtr := flag.String("i", "1000", "The number of iterations at each step of the annealing process - lower is quicker; higher is more optimal")
-	swapPtr := flag.String("s", "1", "The number of swaps in each iteration of the anneling process - lower is quicker; higher is more optimal")
-	concurrentAnnealerPtr := flag.String("a", "6", "The number of concurrent annealing goroutines")
-
+	mode := flag.String("m", "hybrid", "What to optimise: sum | count | hybrid")
+	file := flag.String("f", "input.json", "Path to the JSON input file")
+	population := flag.Int("p", 500, "Population size for the genetic algorithm")
+	runtime := flag.Duration("d", 5*time.Second, "How long to run the genetic algorithm for")
 	flag.Parse()
 
-	baseTemperature, _ := strconv.ParseFloat(*baseTemperaturePtr, 64)
-	endTemperature, _ := strconv.ParseFloat(*endTemperaturePtr, 64)
-	coolingRate, _ := strconv.ParseFloat(*coolingRatePtr, 64)
-	internalIterations, _ := strconv.Atoi(*iterationPtr)
-	swapCount, _ := strconv.Atoi(*swapPtr)
-	annealerCount, _ := strconv.Atoi(*concurrentAnnealerPtr)
-
-	problemRaw, err := ioutil.ReadFile(*filePtr)
+	raw, err := os.ReadFile(*file)
 	if err != nil {
-		log.Fatal("error opening file: ", err)
+		log.Fatalf("error opening file: %v", err)
 	}
 
-	// unmarshall data into payload
-	var problemContent problem
-	err = json.Unmarshal(problemRaw, &problemContent)
-	if err != nil {
-		log.Fatal("error making sense of input file: ", err)
+	var prob problem
+	if err := json.Unmarshal(raw, &prob); err != nil {
+		log.Fatalf("error parsing input: %v", err)
 	}
 
-	// convert the slice of table capacities into a slice of table structs
-	initialTables := make([]table, len(problemContent.Tables))
-
-	for i := range problemContent.Tables {
-		initialTables[i].capacity = problemContent.Tables[i]
-		initialTables[i].people = make([]person, initialTables[i].capacity)
-		initialTables[i].peopleMap = make(map[string]bool)
-	}
-
-	// parse through the plus-ones
-	plusOnes := make(map[string]string)
-	for _, p := range problemContent.PlusOnes {
+	plusOnes := make(map[string]string, len(prob.PlusOnes))
+	for _, p := range prob.PlusOnes {
 		plusOnes[p.PersonOne] = p.PersonTwo
 	}
 
-	var costFunction func([]table, map[string]string) float64
-	switch *costFunctionPtr {
-	case "hybrid":
-		costFunction = hybridFunction
-	case "sum":
-		costFunction = sumFunction
-	case "count":
-		costFunction = countFunction
-	default:
-		log.Fatal("provided cost function parameter not understood")
+	totalPrefs := 0
+	for _, p := range prob.People {
+		totalPrefs += len(p.Preferences)
 	}
 
-	solution := anneal(problemContent.People, initialTables, plusOnes, costFunction, baseTemperature, endTemperature, coolingRate, internalIterations, swapCount, annealerCount)
+	score, err := scorer(*mode, plusOnes, len(prob.People), totalPrefs)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	printSolution(solution, plusOnes)
+	deadline := time.Now().Add(*runtime)
+	best := algo.RunGeneticAlgorithm(algo.Config[*assignment]{
+		PopulationSize:      *population,
+		GenerateIndividual:  generator(prob.People, prob.Tables, score),
+		Crossover:           crossover(prob.Tables, score),
+		ContinuingCondition: func() bool { return time.Now().Before(deadline) },
+	})
+
+	printSolution(best, plusOnes)
 }
