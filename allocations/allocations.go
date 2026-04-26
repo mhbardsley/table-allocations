@@ -111,13 +111,20 @@ func Allocate(prob Problem, opts Options) (Result, error) {
 	}
 
 	deadline := time.Now().Add(runtime)
+	// Wrap localOptimize in a deadline-aware closure so the hill-climb bails
+	// the moment we're past the search budget. Without this, on large inputs
+	// (a few hundred people, tables of 8+) a single hill-climb pass can take
+	// many seconds and the user sees the GA hang well past the deadline.
+	localSearch := func(a *assignment) {
+		localOptimizeUntil(a, deadline)
+	}
 	best := algo.RunGeneticAlgorithm(algo.Config[*assignment]{
 		PopulationSize:      pop,
 		GenerateIndividual:  generator(prob.People, prob.Tables, score),
 		Crossover:           crossover(prob.Tables, score),
 		ContinuingCondition: func() bool { return time.Now().Before(deadline) },
 		Elitism:             1,
-		LocalSearch:         localOptimize,
+		LocalSearch:         localSearch,
 	})
 
 	count, sum, _ := scoreParts(best.tables, plusOnes)
@@ -181,9 +188,25 @@ func swapTwo(ts []table) {
 // localOptimize performs greedy pairwise-swap hill-climbing until no swap improves fitness.
 // The GA explores; this exploits — it polishes the best individual to a local optimum.
 func localOptimize(a *assignment) {
+	localOptimizeUntil(a, time.Time{})
+}
+
+// localOptimizeUntil is localOptimize with a hard wall-clock budget. A zero
+// deadline disables the budget (equivalent to localOptimize). The deadline is
+// checked at the table-pair level, frequent enough to keep the bail latency
+// well under a second on large inputs and rare enough that the time.Now()
+// overhead doesn't dominate the inner swap loop.
+func localOptimizeUntil(a *assignment, deadline time.Time) {
+	hasDeadline := !deadline.IsZero()
 	for {
+		if hasDeadline && time.Now().After(deadline) {
+			return
+		}
 		improved := false
 		for i := range a.tables {
+			if hasDeadline && time.Now().After(deadline) {
+				return
+			}
 			for j := i + 1; j < len(a.tables); j++ {
 				for pi := range a.tables[i].capacity {
 					for pj := range a.tables[j].capacity {
