@@ -111,13 +111,26 @@ func Allocate(prob Problem, opts Options) (Result, error) {
 		return Result{}, err
 	}
 
+	// Reserve a small slice of the budget for a final sum-only polish pass
+	// (only meaningful for ModeHybrid). The hybrid score weights count so
+	// heavily that once count saturates the gradient toward more prefs is
+	// barely visible; a dedicated post-GA sweep squeezes out the remaining
+	// sum at fixed count. Skipped on short runs (<10s) — taking time away
+	// from the GA hurts more than the polish gains at small budgets, and
+	// converges in under a second on 200 people anyway.
+	polishBudget := time.Duration(0)
+	if mode == ModeHybrid && runtime >= 10*time.Second {
+		polishBudget = 2 * time.Second
+	}
+	gaRuntime := runtime - polishBudget
+
 	// Multistart: split the budget into N epochs, run a fresh GA per epoch,
 	// take the best across epochs. A single GA tends to get stuck in whatever
 	// basin its initial population landed in; restarting gets us a fresh draw
 	// at a different basin, and the variance between draws is real enough to
 	// gain measurable quality on large inputs.
 	const epochs = 4
-	epochBudget := runtime / epochs
+	epochBudget := gaRuntime / epochs
 
 	mkCfg := func(deadline time.Time) algo.Config[*assignment] {
 		polish := func(a *assignment) { localOptimizeUntil(a, deadline) }
@@ -149,6 +162,14 @@ func Allocate(prob Problem, opts Options) (Result, error) {
 		if best == nil || candidate.Fitness() > best.Fitness() {
 			best = candidate
 		}
+	}
+
+	// Squeeze remaining sum out of the elite without disturbing count or
+	// plus-one constraints. No-op for ModeCount/ModeSum (count not the
+	// dominant term, or sum already maximised by the GA).
+	if polishBudget > 0 {
+		polishDeadline := time.Now().Add(polishBudget)
+		polishSumPreservingCount(best, plusOnes, polishDeadline)
 	}
 
 	count, sum, _ := scoreParts(best.tables, plusOnes)
@@ -265,6 +286,49 @@ func reshuffleTwoTables(ts []table) {
 // The GA explores; this exploits — it polishes the best individual to a local optimum.
 func localOptimize(a *assignment) {
 	localOptimizeUntil(a, time.Time{})
+}
+
+// polishSumPreservingCount squeezes more preferences out of an already-good
+// assignment without dropping the satisfied-people count. Hybrid mode
+// dominates with weight*count; once count is at its local maximum the
+// gradient toward more sum is faint and the GA largely stops investing in
+// it. This pass goes pairwise across tables and accepts any swap that
+// (a) doesn't introduce a plus-one penalty, (b) doesn't reduce satisfied
+// count, and (c) increases the per-pref sum. Delta-scored on the two
+// affected tables only — same speed envelope as localOptimizeUntil.
+func polishSumPreservingCount(a *assignment, plusOnes map[string]string, deadline time.Time) {
+	hasDeadline := !deadline.IsZero()
+	pair := make([]table, 2)
+	for {
+		if hasDeadline && time.Now().After(deadline) {
+			return
+		}
+		improved := false
+		for i := range a.tables {
+			if hasDeadline && time.Now().After(deadline) {
+				return
+			}
+			for j := i + 1; j < len(a.tables); j++ {
+				pair[0] = a.tables[i]
+				pair[1] = a.tables[j]
+				for pi := range a.tables[i].capacity {
+					for pj := range a.tables[j].capacity {
+						c0, s0, p0 := scoreParts(pair, plusOnes)
+						swapAt(&a.tables[i], &a.tables[j], pi, pj)
+						c1, s1, p1 := scoreParts(pair, plusOnes)
+						if p1 <= p0 && c1 >= c0 && s1 > s0 {
+							improved = true
+						} else {
+							swapAt(&a.tables[i], &a.tables[j], pi, pj)
+						}
+					}
+				}
+			}
+		}
+		if !improved {
+			return
+		}
+	}
 }
 
 // localOptimizeUntil is localOptimize with a hard wall-clock budget. A zero

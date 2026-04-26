@@ -287,6 +287,100 @@ func expApprox(x float64) float64 {
 	return math.Exp(x)
 }
 
+// TestBenchVsPlantedOptimum runs Allocate against problems whose optimal
+// score is known by construction — we lay out the people in cliques first,
+// then build preferences that point inside (and partly outside) those
+// cliques, so the per-person and per-pref maxima are arithmetic.
+//
+// Reports how close the GA gets to those known maxima at scale.
+func TestBenchVsPlantedOptimum(t *testing.T) {
+	if os.Getenv("BENCH") == "" {
+		t.Skip("set BENCH=1 to run this bench")
+	}
+	for _, c := range []struct {
+		name      string
+		n, table  int
+		intraOnly bool // true = all prefs intra-clique (optimum = 100%)
+	}{
+		{"clique-perfect-100", 100, 10, true},
+		{"clique-perfect-200", 200, 10, true},
+		{"clique-spill-100", 100, 10, false},
+		{"clique-spill-200", 200, 10, false},
+	} {
+		prob, optPeople, optPrefs := generatePlantedProblem(c.n, c.table, c.intraOnly)
+		totalPrefs := 0
+		for _, p := range prob.People {
+			totalPrefs += len(p.Preferences)
+		}
+		for _, d := range []time.Duration{5 * time.Second, 30 * time.Second} {
+			res, err := Allocate(prob, Options{Mode: ModeHybrid, Runtime: d})
+			if err != nil {
+				t.Fatal(err)
+			}
+			fmt.Printf("%-20s budget=%-4s  GA people=%d/%d (opt=%d, gap=%d)  GA prefs=%d/%d (opt=%d, gap=%d, %.1f%% of opt)\n",
+				c.name, d,
+				res.Stats.PeopleSatisfied, c.n, optPeople, optPeople-res.Stats.PeopleSatisfied,
+				res.Stats.PreferencesSatisfied, totalPrefs, optPrefs, optPrefs-res.Stats.PreferencesSatisfied,
+				100*float64(res.Stats.PreferencesSatisfied)/float64(optPrefs))
+		}
+	}
+}
+
+// generatePlantedProblem lays out n people in n/table cliques of size `table`.
+// If intraOnly, every preference points inside the clique → optimum is
+// trivially every clique-as-table, with 100% people and 100% prefs satisfied.
+// Otherwise, 2 of every 3 prefs point inside the clique, 1 to an adjacent
+// clique — the clique-as-table partition still satisfies every person and
+// 2/3 of every preference.
+func generatePlantedProblem(n, tableSize int, intraOnly bool) (Problem, int, int) {
+	r := rand.New(rand.NewPCG(123, 456))
+	people := make([]Person, n)
+	for i := range people {
+		people[i] = Person{Name: fmt.Sprintf("P%03d", i)}
+	}
+	cliqueOf := func(i int) int { return i / tableSize }
+	nCliques := n / tableSize
+	for i := range people {
+		ci := cliqueOf(i)
+		// Intra picks: 3 if intraOnly, otherwise 2.
+		intra := 3
+		if !intraOnly {
+			intra = 2
+		}
+		picked := map[int]bool{i: true}
+		// Pick `intra` distinct other people from the same clique.
+		for k := 0; k < intra; k++ {
+			for {
+				j := ci*tableSize + r.IntN(tableSize)
+				if !picked[j] {
+					picked[j] = true
+					people[i].Preferences = append(people[i].Preferences, people[j].Name)
+					break
+				}
+			}
+		}
+		if !intraOnly {
+			// One pick from an adjacent clique (wraps).
+			adj := (ci + 1) % nCliques
+			j := adj*tableSize + r.IntN(tableSize)
+			people[i].Preferences = append(people[i].Preferences, people[j].Name)
+		}
+	}
+	tables := make([]int, nCliques)
+	for i := range tables {
+		tables[i] = tableSize
+	}
+	// Optima: under the obvious clique-as-table partition,
+	//   intraOnly: every person has 3/3 prefs satisfied → optPeople=n, optPrefs=3n
+	//   spillover: every person has 2/3 prefs satisfied → optPeople=n, optPrefs=2n
+	optPeople := n
+	optPrefs := 3 * n
+	if !intraOnly {
+		optPrefs = 2 * n
+	}
+	return Problem{People: people, Tables: tables}, optPeople, optPrefs
+}
+
 // generateClusteredScaleTestProblem mimics real form input where attendees
 // mostly want to sit with people from their friend group. People are split
 // into clusters of `clusterSize`; each preference picks from the same cluster
