@@ -20,3 +20,20 @@ The `-m` flag picks what to optimise:
 - `hybrid` (default) — prioritises `count`, breaking ties on `sum`
 
 The `-d` flag sets the runtime (default `5s`); longer runs find better solutions. Use `-h` to see all flags.
+
+## As a library
+
+The algorithm is also importable as a Go package:
+
+```go
+import "github.com/mhbardsley/table-allocations/allocations"
+
+result, err := allocations.Allocate(allocations.Problem{
+    People:   []allocations.Person{ /* ... */ },
+    Tables:   []int{8, 8, 8},
+    PlusOnes: []allocations.PlusOne{ /* ... */ },
+}, allocations.Options{
+    Mode:    allocations.ModeHybrid,
+    Runtime: 5 * time.Second,
+})
+```
