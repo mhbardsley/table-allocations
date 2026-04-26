@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"slices"
+	"sync/atomic"
 	"time"
 
 	algo "github.com/mhbardsley/jubilant-octo-palm-tree"
@@ -110,31 +111,45 @@ func Allocate(prob Problem, opts Options) (Result, error) {
 		return Result{}, err
 	}
 
-	deadline := time.Now().Add(runtime)
-	polish := func(a *assignment) {
-		localOptimizeUntil(a, deadline)
+	// Multistart: split the budget into N epochs, run a fresh GA per epoch,
+	// take the best across epochs. A single GA tends to get stuck in whatever
+	// basin its initial population landed in; restarting gets us a fresh draw
+	// at a different basin, and the variance between draws is real enough to
+	// gain measurable quality on large inputs.
+	const epochs = 4
+	epochBudget := runtime / epochs
+
+	mkCfg := func(deadline time.Time) algo.Config[*assignment] {
+		polish := func(a *assignment) { localOptimizeUntil(a, deadline) }
+		cfg := algo.Config[*assignment]{
+			PopulationSize:      pop,
+			GenerateIndividual:  generator(prob.People, prob.Tables, score),
+			Crossover:           crossover(prob.Tables, score),
+			ContinuingCondition: func() bool { return time.Now().Before(deadline) },
+			Elitism:             1,
+			// Polish the elite once per generation; concentrating local search
+			// on the single best individual keeps generations cheap enough that
+			// the GA still evolves at scale.
+			EliteLocalSearch: polish,
+		}
+		// On small problems, per-pair scoring is fast enough that running local
+		// search on every child too is a clear win and matches the original
+		// memetic GA behaviour for the sample-sized inputs the project was
+		// originally tuned against.
+		if len(prob.People) <= 50 {
+			cfg.LocalSearch = polish
+		}
+		return cfg
 	}
-	cfg := algo.Config[*assignment]{
-		PopulationSize:      pop,
-		GenerateIndividual:  generator(prob.People, prob.Tables, score),
-		Crossover:           crossover(prob.Tables, score),
-		ContinuingCondition: func() bool { return time.Now().Before(deadline) },
-		Elitism:             1,
-		// Polish the elite once per generation. At any scale the elite is the
-		// individual most worth refining, and concentrating local search there
-		// keeps generations cheap so the GA actually evolves.
-		EliteLocalSearch: polish,
+
+	var best *assignment
+	for e := 0; e < epochs; e++ {
+		epochDeadline := time.Now().Add(epochBudget)
+		candidate := algo.RunGeneticAlgorithm(mkCfg(epochDeadline))
+		if best == nil || candidate.Fitness() > best.Fitness() {
+			best = candidate
+		}
 	}
-	// On small problems, the per-pair scoring is fast enough that running local
-	// search on every child too is a clear win. On larger problems, per-child
-	// polish dominates the runtime budget so completely that the GA fails to
-	// evolve a single generation; the elite-only path above is enough there.
-	// The threshold is conservative — at 50 people / 10-seat tables a single
-	// hill-climb pass runs in a couple of milliseconds.
-	if len(prob.People) <= 50 {
-		cfg.LocalSearch = polish
-	}
-	best := algo.RunGeneticAlgorithm(cfg)
 
 	count, sum, _ := scoreParts(best.tables, plusOnes)
 	totalSeated := 0
@@ -170,7 +185,29 @@ type assignment struct {
 
 func (a *assignment) Fitness() float64 { return a.score(a.tables) }
 
-func (a *assignment) Mutate() { swapTwo(a.tables) }
+// Mutate is a mixture of small and large perturbations. A single swap is fine
+// for fine-tuning a near-optimal arrangement, but on larger inputs the GA
+// trends to local optima the hill-climb can't escape (every single-swap
+// neighbour is worse, even though some 3- or 5-swap neighbour is much
+// better). Mixing in occasional bigger moves — multi-swap chains and a
+// full reshuffle of two tables — gives crossover and mutation a fighting
+// chance of escaping those basins.
+func (a *assignment) Mutate() {
+	switch r := rand.Float64(); {
+	case r < 0.6:
+		swapTwo(a.tables)
+	case r < 0.85:
+		swapTwo(a.tables)
+		swapTwo(a.tables)
+		swapTwo(a.tables)
+	case r < 0.95:
+		for i := 0; i < 5; i++ {
+			swapTwo(a.tables)
+		}
+	default:
+		reshuffleTwoTables(a.tables)
+	}
+}
 
 // swapAt swaps the people at positions pa, pb across tables a, b, keeping member sets in sync.
 func swapAt(a, b *table, pa, pb int) {
@@ -192,6 +229,36 @@ func swapTwo(ts []table) {
 		j++
 	}
 	swapAt(&ts[i], &ts[j], rand.IntN(ts[i].capacity), rand.IntN(ts[j].capacity))
+}
+
+// reshuffleTwoTables takes two random tables, pools their occupants, and
+// redistributes them randomly. Used as a high-magnitude mutation to escape
+// the local optima that single-swap mutation can't break out of.
+func reshuffleTwoTables(ts []table) {
+	if len(ts) < 2 {
+		return
+	}
+	i := rand.IntN(len(ts))
+	j := rand.IntN(len(ts) - 1)
+	if j >= i {
+		j++
+	}
+	a, b := &ts[i], &ts[j]
+	pool := make([]Person, 0, a.capacity+b.capacity)
+	pool = append(pool, a.people...)
+	pool = append(pool, b.people...)
+	rand.Shuffle(len(pool), func(x, y int) { pool[x], pool[y] = pool[y], pool[x] })
+
+	a.members = make(map[string]struct{}, a.capacity)
+	for k := range a.capacity {
+		a.people[k] = pool[k]
+		a.members[pool[k].Name] = struct{}{}
+	}
+	b.members = make(map[string]struct{}, b.capacity)
+	for k := range b.capacity {
+		b.people[k] = pool[a.capacity+k]
+		b.members[pool[a.capacity+k].Name] = struct{}{}
+	}
 }
 
 // localOptimize performs greedy pairwise-swap hill-climbing until no swap improves fitness.
@@ -331,22 +398,93 @@ func pack(people []Person, capacities []int) []table {
 }
 
 func generator(people []Person, capacities []int, score func([]table) float64) func() *assignment {
+	// Half the population is greedy-seeded (each person joins the table with
+	// the most of their preferences already seated), half stays uniform-random
+	// for diversity. The greedy half drops us into a much better starting
+	// basin; the random half keeps the GA from being stuck around one
+	// near-optimum the greedy heuristic misses.
+	var n atomic.Int64
 	return func() *assignment {
-		shuffled := slices.Clone(people)
-		rand.Shuffle(len(shuffled), func(i, j int) {
-			shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
-		})
-		return &assignment{tables: pack(shuffled, capacities), score: score}
+		seq := n.Add(1)
+		var seated []Person
+		if seq%2 == 0 {
+			seated = greedyArrangement(people, capacities)
+		} else {
+			seated = slices.Clone(people)
+			rand.Shuffle(len(seated), func(i, j int) {
+				seated[i], seated[j] = seated[j], seated[i]
+			})
+		}
+		return &assignment{tables: pack(seated, capacities), score: score}
 	}
 }
 
-// crossover applies order crossover (OX) so the child is a valid permutation of all attendees:
-// copy a contiguous slice from parent A, then fill the remaining seats in parent B's order.
+// greedyArrangement walks the (shuffled) people and places each at the
+// not-yet-full table with the most of their preferences already seated. Ties
+// broken in favour of less-full tables to keep capacities balanced as we go.
+// Result is a permutation suitable for pack(). Not optimal, but a much
+// better starting point than uniform-random for the GA.
+func greedyArrangement(people []Person, capacities []int) []Person {
+	order := slices.Clone(people)
+	rand.Shuffle(len(order), func(i, j int) { order[i], order[j] = order[j], order[i] })
+
+	buckets := make([][]Person, len(capacities))
+	for i := range buckets {
+		buckets[i] = make([]Person, 0, capacities[i])
+	}
+	placed := make(map[string]int, len(people))
+	for _, p := range order {
+		bestIdx, bestScore, bestSpace := -1, -1, -1
+		for i, b := range buckets {
+			if len(b) >= capacities[i] {
+				continue
+			}
+			s := 0
+			for _, pref := range p.Preferences {
+				if at, ok := placed[pref]; ok && at == i {
+					s++
+				}
+			}
+			space := capacities[i] - len(b)
+			if s > bestScore || (s == bestScore && space > bestSpace) {
+				bestIdx, bestScore, bestSpace = i, s, space
+			}
+		}
+		buckets[bestIdx] = append(buckets[bestIdx], p)
+		placed[p.Name] = bestIdx
+	}
+	out := make([]Person, 0, len(people))
+	for _, b := range buckets {
+		out = append(out, b...)
+	}
+	return out
+}
+
+// crossover combines two parents into a fresh child. Half the time we use
+// the table-aware variant — inherit some intact tables from parent A and
+// fill the remaining seats from parent B's flat order — which preserves
+// good cluster structure parents have built up. The other half uses
+// classic order crossover (OX), which keeps a different kind of
+// neighbour-order signal alive in the gene pool.
 func crossover(capacities []int, score func([]table) float64) func(*assignment, *assignment) *assignment {
 	total := 0
 	for _, c := range capacities {
 		total += c
 	}
+	ox := orderCrossover(capacities, score, total)
+	tableAware := tableInheritCrossover(capacities, score, total)
+	return func(a, b *assignment) *assignment {
+		if rand.Float64() < 0.5 {
+			return tableAware(a, b)
+		}
+		return ox(a, b)
+	}
+}
+
+// orderCrossover is the original OX: copy a contiguous slice from parent A,
+// then fill the remaining seats in parent B's order, skipping anyone already
+// placed. Operates on a flat permutation; ignores table boundaries.
+func orderCrossover(capacities []int, score func([]table) float64, total int) func(*assignment, *assignment) *assignment {
 	return func(a, b *assignment) *assignment {
 		flatA := flatten(a.tables, total)
 		flatB := flatten(b.tables, total)
@@ -373,6 +511,81 @@ func crossover(capacities []int, score func([]table) float64) func(*assignment, 
 		}
 		return &assignment{tables: pack(child, capacities), score: score}
 	}
+}
+
+// tableInheritCrossover inherits a random subset of parent A's tables intact
+// and fills the rest with parent B's people in walking order, skipping
+// anyone already placed. This carries forward whole clusters parent A may
+// have discovered, which is the kind of structure single-swap mutation can't
+// build from scratch and OX easily destroys.
+func tableInheritCrossover(capacities []int, score func([]table) float64, total int) func(*assignment, *assignment) *assignment {
+	nTables := len(capacities)
+	return func(a, b *assignment) *assignment {
+		// Inherit between 1 and nTables-1 of A's tables; the count itself is
+		// random per call so the GA explores at multiple "block sizes."
+		inheritCount := 1 + rand.IntN(maxInt(1, nTables-1))
+		// Pick which of A's tables to inherit by shuffling indices and taking
+		// the first inheritCount.
+		idx := make([]int, nTables)
+		for i := range idx {
+			idx[i] = i
+		}
+		rand.Shuffle(nTables, func(x, y int) { idx[x], idx[y] = idx[y], idx[x] })
+		keep := make([]bool, nTables)
+		for i := 0; i < inheritCount; i++ {
+			keep[idx[i]] = true
+		}
+
+		// Allocate the flat child buffer + used set.
+		child := make([]Person, total)
+		used := make(map[string]struct{}, total)
+		// Place inherited tables first into the same slots they occupied in A.
+		// pack() walks tables in order, so the slot for table i starts at
+		// sum(capacities[:i]).
+		offset := 0
+		for i := 0; i < nTables; i++ {
+			if keep[i] {
+				for k, p := range a.tables[i].people {
+					child[offset+k] = p
+					used[p.Name] = struct{}{}
+				}
+			}
+			offset += capacities[i]
+		}
+		// Fill the remaining slots from B's flat walk, skipping anyone already
+		// placed. start point chosen randomly so we don't always favour B's
+		// table 0.
+		flatB := flatten(b.tables, total)
+		bStart := rand.IntN(total)
+		offset = 0
+		for i := 0; i < nTables; i++ {
+			if keep[i] {
+				offset += capacities[i]
+				continue
+			}
+			for slot := 0; slot < capacities[i]; slot++ {
+				for {
+					p := flatB[bStart%total]
+					bStart++
+					if _, ok := used[p.Name]; ok {
+						continue
+					}
+					child[offset+slot] = p
+					used[p.Name] = struct{}{}
+					break
+				}
+			}
+			offset += capacities[i]
+		}
+		return &assignment{tables: pack(child, capacities), score: score}
+	}
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func flatten(ts []table, total int) []Person {
