@@ -1,16 +1,16 @@
-package main
+package allocations
 
 import "testing"
 
-func newAssignment(t *testing.T, mode string, plusOnes map[string]string, layout [][]string, prefs map[string][]string) *assignment {
+func newAssignment(t *testing.T, mode Mode, plusOnes map[string]string, layout [][]string, prefs map[string][]string) *assignment {
 	t.Helper()
 	totalPeople, totalPrefs := 0, 0
 	caps := make([]int, len(layout))
-	flat := []person{}
+	flat := []Person{}
 	for i, names := range layout {
 		caps[i] = len(names)
 		for _, n := range names {
-			flat = append(flat, person{Name: n, Preferences: prefs[n]})
+			flat = append(flat, Person{Name: n, Preferences: prefs[n]})
 			totalPeople++
 			totalPrefs += len(prefs[n])
 		}
@@ -25,7 +25,7 @@ func newAssignment(t *testing.T, mode string, plusOnes map[string]string, layout
 func TestLocalOptimizeFixesObviousMisseat(t *testing.T) {
 	// A wants C (at table 1); B is indifferent. Initial: [A, B][C, D]. Swap A↔C gives A a friend.
 	prefs := map[string][]string{"A": {"C"}, "B": nil, "C": nil, "D": nil}
-	a := newAssignment(t, "hybrid", nil, [][]string{{"A", "B"}, {"C", "D"}}, prefs)
+	a := newAssignment(t, ModeHybrid, nil, [][]string{{"A", "B"}, {"C", "D"}}, prefs)
 
 	before := a.score(a.tables)
 	localOptimize(a)
@@ -50,7 +50,7 @@ func TestLocalOptimizeFixesObviousMisseat(t *testing.T) {
 func TestLocalOptimizeIsNoOpAtLocalOptimum(t *testing.T) {
 	// Already optimal: A+B mutual, C+D mutual.
 	prefs := map[string][]string{"A": {"B"}, "B": {"A"}, "C": {"D"}, "D": {"C"}}
-	a := newAssignment(t, "hybrid", nil, [][]string{{"A", "B"}, {"C", "D"}}, prefs)
+	a := newAssignment(t, ModeHybrid, nil, [][]string{{"A", "B"}, {"C", "D"}}, prefs)
 
 	before := a.score(a.tables)
 	localOptimize(a)
@@ -63,7 +63,7 @@ func TestLocalOptimizeRespectsPlusOnes(t *testing.T) {
 	// A and B are a plus-one pair. Start them apart; localOptimize must reunite them.
 	prefs := map[string][]string{"A": nil, "B": nil, "C": nil, "D": nil}
 	plusOnes := map[string]string{"A": "B"}
-	a := newAssignment(t, "hybrid", plusOnes, [][]string{{"A", "C"}, {"B", "D"}}, prefs)
+	a := newAssignment(t, ModeHybrid, plusOnes, [][]string{{"A", "C"}, {"B", "D"}}, prefs)
 
 	localOptimize(a)
 	_, _, pen := scoreParts(a.tables, plusOnes)
@@ -83,11 +83,10 @@ func TestLocalOptimizeReachesKnownOptimum(t *testing.T) {
 		"E": {"F"}, "F": {"E"},
 	}
 	// Scrambled start: nobody seated with their partner.
-	a := newAssignment(t, "hybrid", nil, [][]string{{"A", "C"}, {"B", "E"}, {"D", "F"}}, prefs)
+	a := newAssignment(t, ModeHybrid, nil, [][]string{{"A", "C"}, {"B", "E"}, {"D", "F"}}, prefs)
 	localOptimize(a)
 	count, sum, _ := scoreParts(a.tables, nil)
 	if count != 6 || sum != 6 {
 		t.Fatalf("expected count=6 sum=6 (all paired), got count=%d sum=%d", count, sum)
 	}
 }
-

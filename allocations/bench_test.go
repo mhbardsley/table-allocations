@@ -1,4 +1,4 @@
-package main
+package allocations
 
 import (
 	"encoding/json"
@@ -12,16 +12,16 @@ import (
 
 // TestBenchHillClimbVsBareGA is not a regression test — it compares GA-only vs GA+hill-climb
 // at various durations on sample.json. Skipped unless BENCH=1 is set in the environment.
-// Run with: BENCH=1 go test -run TestBenchHillClimbVsBareGA -v
+// Run with: BENCH=1 go test -run TestBenchHillClimbVsBareGA -v ./allocations
 func TestBenchHillClimbVsBareGA(t *testing.T) {
 	if os.Getenv("BENCH") == "" {
 		t.Skip("set BENCH=1 to run this bench")
 	}
-	raw, err := os.ReadFile("sample.json")
+	raw, err := os.ReadFile("../sample.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	var prob problem
+	var prob Problem
 	if err := json.Unmarshal(raw, &prob); err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +33,7 @@ func TestBenchHillClimbVsBareGA(t *testing.T) {
 	for _, p := range prob.People {
 		totalPrefs += len(p.Preferences)
 	}
-	score, err := scorer("hybrid", plusOnes, len(prob.People), totalPrefs)
+	score, err := scorer(ModeHybrid, plusOnes, len(prob.People), totalPrefs)
 	if err != nil {
 		t.Fatal(err)
 	}
