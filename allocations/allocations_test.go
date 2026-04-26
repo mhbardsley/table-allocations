@@ -1,6 +1,9 @@
 package allocations
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func newAssignment(t *testing.T, mode Mode, plusOnes map[string]string, layout [][]string, prefs map[string][]string) *assignment {
 	t.Helper()
@@ -88,5 +91,34 @@ func TestLocalOptimizeReachesKnownOptimum(t *testing.T) {
 	count, sum, _ := scoreParts(a.tables, nil)
 	if count != 6 || sum != 6 {
 		t.Fatalf("expected count=6 sum=6 (all paired), got count=%d sum=%d", count, sum)
+	}
+}
+
+// localOptimizeUntil with a deadline already in the past must return without
+// improving the assignment — the whole point is bailing out fast on big inputs.
+func TestLocalOptimizeUntilBailsPastDeadline(t *testing.T) {
+	prefs := map[string][]string{"A": {"C"}, "B": nil, "C": nil, "D": nil}
+	a := newAssignment(t, ModeHybrid, nil, [][]string{{"A", "B"}, {"C", "D"}}, prefs)
+	before := a.score(a.tables)
+
+	localOptimizeUntil(a, time.Now().Add(-1*time.Second))
+	if a.score(a.tables) != before {
+		t.Fatalf("expected no change when called past deadline, score moved from %v", before)
+	}
+}
+
+// With a comfortable deadline, localOptimizeUntil must behave exactly like the
+// unbounded localOptimize on a small input that converges in milliseconds.
+func TestLocalOptimizeUntilWithSlackEqualsLocalOptimize(t *testing.T) {
+	prefs := map[string][]string{
+		"A": {"B"}, "B": {"A"},
+		"C": {"D"}, "D": {"C"},
+		"E": {"F"}, "F": {"E"},
+	}
+	a := newAssignment(t, ModeHybrid, nil, [][]string{{"A", "C"}, {"B", "E"}, {"D", "F"}}, prefs)
+	localOptimizeUntil(a, time.Now().Add(5*time.Second))
+	count, sum, _ := scoreParts(a.tables, nil)
+	if count != 6 || sum != 6 {
+		t.Fatalf("expected count=6 sum=6 with slack deadline, got count=%d sum=%d", count, sum)
 	}
 }
