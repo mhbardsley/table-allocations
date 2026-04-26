@@ -111,21 +111,30 @@ func Allocate(prob Problem, opts Options) (Result, error) {
 	}
 
 	deadline := time.Now().Add(runtime)
-	// Wrap localOptimize in a deadline-aware closure so the hill-climb bails
-	// the moment we're past the search budget. Without this, on large inputs
-	// (a few hundred people, tables of 8+) a single hill-climb pass can take
-	// many seconds and the user sees the GA hang well past the deadline.
-	localSearch := func(a *assignment) {
+	polish := func(a *assignment) {
 		localOptimizeUntil(a, deadline)
 	}
-	best := algo.RunGeneticAlgorithm(algo.Config[*assignment]{
+	cfg := algo.Config[*assignment]{
 		PopulationSize:      pop,
 		GenerateIndividual:  generator(prob.People, prob.Tables, score),
 		Crossover:           crossover(prob.Tables, score),
 		ContinuingCondition: func() bool { return time.Now().Before(deadline) },
 		Elitism:             1,
-		LocalSearch:         localSearch,
-	})
+		// Polish the elite once per generation. At any scale the elite is the
+		// individual most worth refining, and concentrating local search there
+		// keeps generations cheap so the GA actually evolves.
+		EliteLocalSearch: polish,
+	}
+	// On small problems, the per-pair scoring is fast enough that running local
+	// search on every child too is a clear win. On larger problems, per-child
+	// polish dominates the runtime budget so completely that the GA fails to
+	// evolve a single generation; the elite-only path above is enough there.
+	// The threshold is conservative — at 50 people / 10-seat tables a single
+	// hill-climb pass runs in a couple of milliseconds.
+	if len(prob.People) <= 50 {
+		cfg.LocalSearch = polish
+	}
+	best := algo.RunGeneticAlgorithm(cfg)
 
 	count, sum, _ := scoreParts(best.tables, plusOnes)
 	totalSeated := 0
@@ -196,8 +205,23 @@ func localOptimize(a *assignment) {
 // checked at the table-pair level, frequent enough to keep the bail latency
 // well under a second on large inputs and rare enough that the time.Now()
 // overhead doesn't dominate the inner swap loop.
+//
+// Uses delta scoring: a swap involving tables i and j only affects the score
+// contribution of tables i and j (every other table's people, preferences,
+// and plus-one status are untouched). Re-scoring just those two instead of
+// the whole plan turns the per-swap cost from O(N people × P prefs) into
+// O(2 cap × P prefs), an ~N/(2 cap)× speedup that keeps the elite polish
+// affordable at hundreds of attendees.
+//
+// (The "early-return on penalty" branch in the score function makes delta
+// scoring approximate when the global penalty count is non-zero AND the swap
+// doesn't touch a violating pair: we may apply or skip neutral swaps that
+// don't actually change global fitness. Harmless — global fitness is
+// unchanged either way — and the elite, which is what we polish, almost
+// always has zero violations because penalties dominate every other term.)
 func localOptimizeUntil(a *assignment, deadline time.Time) {
 	hasDeadline := !deadline.IsZero()
+	pair := make([]table, 2)
 	for {
 		if hasDeadline && time.Now().After(deadline) {
 			return
@@ -208,11 +232,15 @@ func localOptimizeUntil(a *assignment, deadline time.Time) {
 				return
 			}
 			for j := i + 1; j < len(a.tables); j++ {
+				// table.people / table.members are reference types, so this
+				// aliases the live tables; no need to refresh after each swap.
+				pair[0] = a.tables[i]
+				pair[1] = a.tables[j]
 				for pi := range a.tables[i].capacity {
 					for pj := range a.tables[j].capacity {
-						before := a.score(a.tables)
+						before := a.score(pair)
 						swapAt(&a.tables[i], &a.tables[j], pi, pj)
-						if a.score(a.tables) > before {
+						if a.score(pair) > before {
 							improved = true
 						} else {
 							swapAt(&a.tables[i], &a.tables[j], pi, pj)

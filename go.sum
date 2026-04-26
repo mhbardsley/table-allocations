@@ -1,9 +1,9 @@
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/mhbardsley/jubilant-octo-palm-tree v0.0.0-20240819211023-ebbefdd6b70c h1:5/uxc7WvXz9dnwTFSpaqNRAEnx8pXq8DAGDl3zwUelg=
-github.com/mhbardsley/jubilant-octo-palm-tree v0.0.0-20240819211023-ebbefdd6b70c/go.mod h1:92M2quP1oRIWVaUgCdYYdjoLIHn+UDcQgxaBg/fOjaQ=
 github.com/mhbardsley/jubilant-octo-palm-tree v0.0.0-20260425220021-5d171dc36c6c h1:IoPb2ntO1UBwqq1I6c2IICORBfYwLOt6d4LhXgUBryU=
 github.com/mhbardsley/jubilant-octo-palm-tree v0.0.0-20260425220021-5d171dc36c6c/go.mod h1:92M2quP1oRIWVaUgCdYYdjoLIHn+UDcQgxaBg/fOjaQ=
+github.com/mhbardsley/jubilant-octo-palm-tree v0.0.0-20260426162753-963b11203f46 h1:+t9474koLfcZQ8vuiPIaeVHBtVs/t440c4CU0N6ifMA=
+github.com/mhbardsley/jubilant-octo-palm-tree v0.0.0-20260426162753-963b11203f46/go.mod h1:92M2quP1oRIWVaUgCdYYdjoLIHn+UDcQgxaBg/fOjaQ=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/stretchr/testify v1.9.0 h1:HtqpIVDClZ4nwg75+f6Lvsy/wHu+3BoSGCbBAcpTsTg=
